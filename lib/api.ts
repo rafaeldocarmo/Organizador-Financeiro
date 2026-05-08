@@ -4,9 +4,12 @@ import { auth } from "@/auth";
 
 /**
  * Resolve the authenticated user's id. Throws if no session.
- * `req` is kept for backward compatibility; auth() reads cookies via headers().
+ * Fast path: proxy.ts forwards userId in x-user-id header after JWT decode,
+ * so API routes skip the second auth() roundtrip.
  */
-export async function getUserId(_req?: NextRequest): Promise<string> {
+export async function getUserId(req?: NextRequest): Promise<string> {
+  const fromHeader = req?.headers.get("x-user-id");
+  if (fromHeader) return fromHeader;
   const session = await auth();
   const id = session?.user?.id;
   if (!id) throw new Error("Unauthorized");

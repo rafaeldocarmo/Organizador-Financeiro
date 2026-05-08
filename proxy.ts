@@ -1,4 +1,5 @@
 import { auth } from "@/auth";
+import { NextResponse } from "next/server";
 
 const PUBLIC_PATHS = ["/login", "/offline"];
 const PUBLIC_FILES = ["/sw.js", "/manifest.webmanifest"];
@@ -22,6 +23,14 @@ export default auth((req) => {
     const url = new URL("/login", nextUrl);
     url.searchParams.set("callbackUrl", path + nextUrl.search);
     return Response.redirect(url);
+  }
+
+  // Forward userId to API routes so they don't re-decode the JWT via auth()
+  const userId = req.auth.user?.id;
+  if (userId && path.startsWith("/api/")) {
+    const headers = new Headers(req.headers);
+    headers.set("x-user-id", userId);
+    return NextResponse.next({ request: { headers } });
   }
 });
 

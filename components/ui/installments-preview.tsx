@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { useFetch } from '@/lib/use-fetch';
 import Card from '@/components/ui/card';
 import Glyph from '@/components/ui/glyph';
 import Pips from '@/components/charts/pips';
@@ -44,14 +44,9 @@ export default function InstallmentsPreview({ year: yearProp, month: monthProp }
   const now = new Date();
   const year = yearProp ?? now.getFullYear();
   const month = monthProp ?? now.getMonth() + 1;
-  const [items, setItems] = useState<Installment[] | null>(null);
 
-  useEffect(() => {
-    fetch('/api/installments')
-      .then(r => r.json())
-      .then(data => { if (Array.isArray(data)) setItems(data); })
-      .catch(console.error);
-  }, []);
+  const { data } = useFetch<Installment[]>('/api/installments');
+  const items = Array.isArray(data) ? data : null;
 
   if (!items) return null;
 

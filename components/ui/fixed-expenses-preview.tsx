@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { useFetch } from '@/lib/use-fetch';
 import Card from '@/components/ui/card';
 import Glyph from '@/components/ui/glyph';
 import { I } from '@/components/ui/icons';
@@ -43,31 +43,20 @@ export default function FixedExpensesPreview({ year: yearProp, month: monthProp 
   const year = yearProp ?? now.getFullYear();
   const month = monthProp ?? now.getMonth() + 1;
   const monthName = new Date(year, month - 1, 1).toLocaleString('pt-BR', { month: 'long' });
-  const [items, setItems] = useState<Item[] | null>(null);
 
-  useEffect(() => {
-    setItems(null);
-    Promise.all([
-      fetch(`/api/fixed-expenses?year=${year}&month=${month}`).then(r => r.json()).catch(() => []),
-      fetch(`/api/transactions?type=EXPENSE&year=${year}&month=${month}&limit=200`).then(r => r.json()).catch(() => []),
-    ]).then(([fixedRaw, txRaw]) => {
-      const fixed: Item[] = Array.isArray(fixedRaw)
-        ? (fixedRaw as FixedExpense[]).map(f => ({
-            id: f.id, title: f.title, amount: f.amount, category: f.category,
-          }))
-        : [];
-      const recurring: Item[] = Array.isArray(txRaw)
-        ? (txRaw as RecurringTx[])
-            .filter(t => t.isRecurring && t.type === 'EXPENSE')
-            .map(t => ({
-              id: `tx-${t.id}`, title: t.title, amount: t.amount, category: t.category,
-            }))
-        : [];
-      setItems([...fixed, ...recurring]);
-    });
-  }, [year, month]);
+  const { data: fixedRaw } = useFetch<FixedExpense[]>(`/api/fixed-expenses?year=${year}&month=${month}`);
+  const { data: txRaw }    = useFetch<RecurringTx[]>(`/api/transactions?type=EXPENSE&year=${year}&month=${month}&limit=200`);
 
-  if (!items || items.length === 0) return null;
+  const fixed: Item[] = Array.isArray(fixedRaw)
+    ? fixedRaw.map(f => ({ id: f.id, title: f.title, amount: f.amount, category: f.category }))
+    : [];
+  const recurring: Item[] = Array.isArray(txRaw)
+    ? txRaw.filter(t => t.isRecurring && t.type === 'EXPENSE')
+        .map(t => ({ id: `tx-${t.id}`, title: t.title, amount: t.amount, category: t.category }))
+    : [];
+  const items = [...fixed, ...recurring];
+
+  if (items.length === 0) return null;
 
   const total = items.reduce((s, x) => s + x.amount, 0);
   const max = items.reduce((m, x) => Math.max(m, x.amount), 0);

@@ -1,4 +1,5 @@
 import type { NextRequest } from "next/server";
+import { Prisma } from "@/lib/generated/prisma";
 import { prisma } from "@/lib/prisma";
 import { getUserId, parseMonthParams, ok, err } from "@/lib/api";
 
@@ -10,13 +11,33 @@ export async function GET(req: NextRequest) {
     const monthStart = new Date(year, month - 1, 1);
     const monthEnd = new Date(year, month, 1);
 
-    const [incomeAgg, debitAgg, recentTx, monthRecord] = await Promise.all([
-      // Income: all INCOME transactions with date in this month
+    const monthSlots = Array.from({ length: 7 }, (_, i) => {
+      const d = new Date(year, month - 1 - (6 - i), 1);
+      const y = d.getFullYear();
+      const m = d.getMonth() + 1;
+      return {
+        y, m,
+        start: new Date(y, m - 1, 1),
+        end: new Date(y, m, 1),
+        label: d.toLocaleString("pt-BR", { month: "short" }).toUpperCase(),
+      };
+    });
+    const trendStart = monthSlots[0].start;
+    const trendEnd = monthSlots[6].end;
+
+    // Phase 1: fire 6 independent queries in parallel
+    const [
+      incomeAgg,
+      debitAgg,
+      recentTx,
+      installments,
+      trendMonthRecords,
+      debitTrendRaw,
+    ] = await Promise.all([
       prisma.transaction.aggregate({
         where: { userId, type: "INCOME", date: { gte: monthStart, lt: monthEnd } },
         _sum: { amount: true },
       }),
-      // Debit expenses: EXPENSE transactions paid via debit, with date in this month
       prisma.transaction.aggregate({
         where: { userId, type: "EXPENSE", isCredit: false, date: { gte: monthStart, lt: monthEnd } },
         _sum: { amount: true },
@@ -27,26 +48,61 @@ export async function GET(req: NextRequest) {
         orderBy: { date: "desc" },
         take: 10,
       }),
-      // The billing Month record for this month (used to find credit singles)
-      prisma.month.findUnique({
-        where: { userId_year_month: { userId, year, month } },
+      prisma.installment.findMany({
+        where: { userId },
+        include: { category: true },
       }),
+      prisma.month.findMany({
+        where: { userId, OR: monthSlots.map(s => ({ year: s.y, month: s.m })) },
+      }),
+      // 1 raw SQL groupby instead of 7 sequential aggregates
+      prisma.$queryRaw<Array<{ y: number; m: number; total: number }>>(
+        Prisma.sql`
+          SELECT
+            EXTRACT(YEAR FROM date)::int  AS y,
+            EXTRACT(MONTH FROM date)::int AS m,
+            COALESCE(SUM(amount), 0)::float AS total
+          FROM "Transaction"
+          WHERE "userId" = ${userId}
+            AND "type"::text = 'EXPENSE'
+            AND "isCredit" = false
+            AND date >= ${trendStart}
+            AND date <  ${trendEnd}
+          GROUP BY y, m
+        `,
+      ),
     ]);
 
-    // Credit single transactions billed to this month
-    const creditSingleAgg = monthRecord
-      ? await prisma.transaction.aggregate({
-          where: { userId, type: "EXPENSE", isCredit: true, monthId: monthRecord.id },
-          _sum: { amount: true },
-        })
-      : null;
-    const creditSingle = creditSingleAgg?._sum.amount ?? 0;
+    const monthRecord = trendMonthRecords.find(r => r.year === year && r.month === month) ?? null;
+    const trendMonthIds = trendMonthRecords.map(r => r.id);
 
-    // Installment parcels active in this month
-    const installments = await prisma.installment.findMany({
-      where: { userId },
-      include: { category: true },
-    });
+    // Phase 2: queries that depend on trendMonthRecords
+    const [expensesForBreakdown, creditTrendRows] = await Promise.all([
+      prisma.transaction.findMany({
+        where: {
+          userId,
+          type: "EXPENSE",
+          OR: [
+            { isCredit: false, date: { gte: monthStart, lt: monthEnd } },
+            ...(monthRecord ? [{ isCredit: true, monthId: monthRecord.id }] : []),
+          ],
+        },
+        include: { category: true },
+      }),
+      trendMonthIds.length === 0
+        ? Promise.resolve([] as Array<{ monthId: string | null; _sum: { amount: number | null } }>)
+        : prisma.transaction.groupBy({
+            by: ["monthId"],
+            where: { userId, type: "EXPENSE", isCredit: true, monthId: { in: trendMonthIds } },
+            _sum: { amount: true },
+          }),
+    ]);
+
+    // ── derive everything from the fetched data ──
+
+    const creditByMonthId = new Map(creditTrendRows.map(r => [r.monthId, r._sum.amount ?? 0]));
+    const creditSingle = monthRecord ? (creditByMonthId.get(monthRecord.id) ?? 0) : 0;
+
     const curIdx = year * 12 + month;
     const activeInstallments = installments.filter(i => {
       const start = new Date(i.startDate);
@@ -59,19 +115,7 @@ export async function GET(req: NextRequest) {
       0,
     );
 
-    // Category breakdown — all expenses (debit + credit single + installment parcels) for this month
-    const expensesForBreakdown = await prisma.transaction.findMany({
-      where: {
-        userId,
-        type: "EXPENSE",
-        OR: [
-          { isCredit: false, date: { gte: monthStart, lt: monthEnd } },
-          ...(monthRecord ? [{ isCredit: true, monthId: monthRecord.id }] : []),
-        ],
-      },
-      include: { category: true },
-    });
-
+    // Category breakdown
     const breakdownMap = new Map<
       string,
       { id: string; name: string; icon: string; color: string; total: number }
@@ -89,46 +133,14 @@ export async function GET(req: NextRequest) {
       addToBreakdown(inst.category, inst.totalAmount / inst.totalParcels);
     const categoryBreakdown = Array.from(breakdownMap.values()).sort((a, b) => b.total - a.total);
 
-    // Monthly trend — last 7 months of all expenses (debit + credit fatura + installment parcels)
-    const monthSlots = Array.from({ length: 7 }, (_, i) => {
-      const d = new Date(year, month - 1 - (6 - i), 1);
-      const y = d.getFullYear();
-      const m = d.getMonth() + 1;
-      return {
-        y, m,
-        start: new Date(y, m - 1, 1),
-        end: new Date(y, m, 1),
-        label: d.toLocaleString("pt-BR", { month: "short" }).toUpperCase(),
-      };
-    });
-
-    const trendMonthRecords = await prisma.month.findMany({
-      where: { userId, OR: monthSlots.map(s => ({ year: s.y, month: s.m })) },
-    });
+    // Trend (debit + credit fatura + installments per month)
+    const debitByYM = new Map(debitTrendRaw.map(r => [`${r.y}-${r.m}`, r.total]));
     const monthIdByYM = new Map(trendMonthRecords.map(r => [`${r.year}-${r.month}`, r.id]));
-    const trendMonthIds = trendMonthRecords.map(r => r.id);
 
-    const [debitTrendRows, creditTrendRows] = await Promise.all([
-      Promise.all(
-        monthSlots.map(s =>
-          prisma.transaction.aggregate({
-            where: { userId, type: "EXPENSE", isCredit: false, date: { gte: s.start, lt: s.end } },
-            _sum: { amount: true },
-          }).then(r => r._sum.amount ?? 0),
-        ),
-      ),
-      trendMonthIds.length === 0
-        ? Promise.resolve([])
-        : prisma.transaction.groupBy({
-            by: ["monthId"],
-            where: { userId, type: "EXPENSE", isCredit: true, monthId: { in: trendMonthIds } },
-            _sum: { amount: true },
-          }),
-    ]);
-    const creditByMonthId = new Map(creditTrendRows.map(r => [r.monthId, r._sum.amount ?? 0]));
-
-    const trend = monthSlots.map((s, i) => {
-      const monthId = monthIdByYM.get(`${s.y}-${s.m}`) ?? null;
+    const trend = monthSlots.map(s => {
+      const ym = `${s.y}-${s.m}`;
+      const debit = debitByYM.get(ym) ?? 0;
+      const monthId = monthIdByYM.get(ym);
       const credit = monthId ? (creditByMonthId.get(monthId) ?? 0) : 0;
       const slotIdx = s.y * 12 + s.m;
       const inst = installments
@@ -139,12 +151,12 @@ export async function GET(req: NextRequest) {
           return slotIdx >= startIdx && slotIdx <= endIdx;
         })
         .reduce((acc, it) => acc + it.totalAmount / it.totalParcels, 0);
-      return { label: s.label, v: debitTrendRows[i] + credit + inst };
+      return { label: s.label, v: debit + credit + inst };
     });
 
     return ok({
       income: incomeAgg._sum.amount ?? 0,
-      expense: (debitAgg._sum.amount ?? 0) + creditSingle + installmentFatura, // debit + fatura cartão
+      expense: (debitAgg._sum.amount ?? 0) + creditSingle + installmentFatura,
       categoryBreakdown,
       trend,
       recentTransactions: recentTx,

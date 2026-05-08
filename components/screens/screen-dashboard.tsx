@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
+import { useFetch, bustCache } from '@/lib/use-fetch';
 import Logo from '@/components/ui/logo';
 import Card from '@/components/ui/card';
 import Chip from '@/components/ui/chip';
@@ -44,17 +45,13 @@ export default function ScreenDashboard() {
   const now = new Date();
   const [year, setYear]   = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth() + 1);
-  const [data, setData] = useState<DashboardData | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const [tick, setTick] = useState(0);
 
-  useEffect(() => {
-    setData(null);
-    fetch(`/api/dashboard?year=${year}&month=${month}`)
-      .then(r => r.json())
-      .then(data => { if (!data?.error) setData(data); })
-      .catch(console.error);
-  }, [tick, year, month]);
+  const { data } = useFetch<DashboardData>(
+    `/api/dashboard?year=${year}&month=${month}`,
+    tick,
+  );
 
   function shiftMonth(delta: number) {
     let m = month + delta;
@@ -259,7 +256,7 @@ export default function ScreenDashboard() {
       <TransactionModal
         open={addOpen}
         onClose={() => setAddOpen(false)}
-        onAdd={() => setTick(t => t + 1)}
+        onAdd={() => { bustCache('/api/'); setTick(t => t + 1); }}
       />
     </>
   );
