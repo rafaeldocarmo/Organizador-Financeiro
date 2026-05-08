@@ -459,7 +459,7 @@ export default function TransactionModal({
         </div>
 
         {/* actions */}
-        <div style={{ padding: '12px 20px 36px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <div style={{ padding: '12px 20px max(36px, calc(env(safe-area-inset-bottom) + 16px))', display: 'flex', flexDirection: 'column', gap: 8 }}>
           <button onClick={submit} disabled={!valid || saving} style={{
             width: '100%', height: 52, borderRadius: 16,
             background: valid ? accent : 'var(--surface-2)',
