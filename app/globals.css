@@ -51,14 +51,10 @@
   --shadow-pop:  0 8px 28px oklch(0 0 0 / 0.4), 0 0 0 1px oklch(1 0 0 / 0.06);
 }
 
-/* — Lock document scroll to .mira — fixes iOS PWA "fixed" bar drifting during scroll — */
 html, body {
-  height: 100dvh;
-  overflow: hidden;
-  overscroll-behavior: none;
-  /* Match app background so iOS rubber-band / safe-area gaps never flash white */
-  background: var(--bg);
   margin: 0;
+  background: var(--bg);
+  overscroll-behavior: none;
 }
 
 /* — Reset within mira root — */
@@ -72,13 +68,6 @@ html, body {
   -webkit-font-smoothing: antialiased;
   font-feature-settings: 'cv11', 'ss01', 'ss03';
   letter-spacing: -0.011em;
-  /* Become the scroll container (instead of body) so position: fixed elements
-     stay anchored to the viewport even on iOS PWA standalone mode. */
-  height: 100dvh;
-  overflow-y: auto;
-  overflow-x: hidden;
-  -webkit-overflow-scrolling: touch;
-  overscroll-behavior-y: contain;
   /* Respect iPhone notch / Dynamic Island when installed as PWA (viewport-fit=cover) */
   padding-top: env(safe-area-inset-top);
   padding-left: env(safe-area-inset-left);

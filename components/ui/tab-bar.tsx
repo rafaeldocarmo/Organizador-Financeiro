@@ -27,6 +27,10 @@ export default function TabBar({ active = 'home', onFab }: TabBarProps) {
       paddingLeft: 'env(safe-area-inset-left)',
       paddingRight: 'env(safe-area-inset-right)',
       background: 'linear-gradient(to top, var(--bg) 60%, transparent)',
+      // Force own compositing layer — fixes iOS PWA "fixed" bar drift during scroll
+      transform: 'translateZ(0)',
+      WebkitTransform: 'translateZ(0)',
+      willChange: 'transform',
     }}>
       <div style={{
         margin: '0 14px', height: 64, borderRadius: 22,
