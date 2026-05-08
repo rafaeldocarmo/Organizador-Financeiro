@@ -56,6 +56,9 @@ html, body {
   height: 100dvh;
   overflow: hidden;
   overscroll-behavior: none;
+  /* Match app background so iOS rubber-band / safe-area gaps never flash white */
+  background: var(--bg);
+  margin: 0;
 }
 
 /* — Reset within mira root — */
