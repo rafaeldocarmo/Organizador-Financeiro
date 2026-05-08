@@ -23,7 +23,7 @@ export default function TabBar({ active = 'home', onFab }: TabBarProps) {
     <div style={{
       position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 30,
       paddingTop: 6,
-      paddingBottom: 'max(28px, calc(env(safe-area-inset-bottom) + 8px))',
+      paddingBottom: 'max(10px, env(safe-area-inset-bottom))',
       paddingLeft: 'env(safe-area-inset-left)',
       paddingRight: 'env(safe-area-inset-right)',
       background: 'linear-gradient(to top, var(--bg) 60%, transparent)',
