@@ -1,0 +1,255 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../lib/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ─── Enums ───────────────────────────────────────────────────────────────────
+
+enum TransactionType {
+  INCOME
+  EXPENSE
+}
+
+enum RecurrencePeriod {
+  WEEKLY
+  MONTHLY
+  ANNUAL
+}
+
+enum InvestmentType {
+  FIXED_INCOME    // Renda Fixa
+  VARIABLE_INCOME // Renda Variável
+  CRYPTO
+}
+
+// ─── Models ──────────────────────────────────────────────────────────────────
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  name          String?
+  emailVerified DateTime?
+  image         String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  accounts Account[]
+  sessions Session[]
+
+  categories    Category[]
+  transactions  Transaction[]
+  fixedExpenses FixedExpense[]
+  installments  Installment[]
+  investments   Investment[]
+  budgets       Budget[]
+  months        Month[]
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// Categorias de transações (pré-populadas via seed + customizáveis pelo usuário)
+model Category {
+  id        String   @id @default(cuid())
+  key       String   // slug: 'food', 'market', 'housing', etc.
+  name      String
+  icon      String   // chave do ícone: 'cup', 'cart', 'house', etc.
+  color     String   // valor oklch
+  isSystem  Boolean  @default(false) // true = categoria padrão do sistema
+  createdAt DateTime @default(now())
+
+  userId String?
+  user   User?   @relation(fields: [userId], references: [id])
+
+  transactions  Transaction[]
+  fixedExpenses FixedExpense[]
+  installments  Installment[]
+  budgets       Budget[]
+
+  @@unique([key, userId]) // slug único por usuário (null userId = sistema)
+}
+
+// Transações avulsas: receitas e despesas do dia a dia
+model Transaction {
+  id          String          @id @default(cuid())
+  type        TransactionType
+  title       String
+  description String?
+  amount      Float
+  date        DateTime
+  hasAttachment Boolean       @default(false)
+  isCredit    Boolean         @default(false) // true = cartão de crédito (avulso)
+  received    Boolean         @default(true)  // para receitas: false = previsto, não recebido
+  isRecurring Boolean         @default(false) // para receitas: true = renda recorrente
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  userId     String
+  user       User     @relation(fields: [userId], references: [id])
+
+  categoryId String
+  category   Category @relation(fields: [categoryId], references: [id])
+
+  monthId String?
+  month   Month?  @relation(fields: [monthId], references: [id])
+}
+
+// Gastos fixos recorrentes: aluguel, plano de saúde, assinaturas, etc.
+model FixedExpense {
+  id          String           @id @default(cuid())
+  title       String
+  description String?
+  amount      Float
+  recurrence  RecurrencePeriod @default(MONTHLY)
+  nextDueDate DateTime
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
+
+  categoryId String
+  category   Category @relation(fields: [categoryId], references: [id])
+
+  // Registros de pagamento mês a mês
+  payments FixedExpensePayment[]
+}
+
+// Controla se um gasto fixo foi pago em determinado mês
+model FixedExpensePayment {
+  id      String   @id @default(cuid())
+  paid    Boolean  @default(false)
+  paidAt  DateTime?
+  dueDate DateTime
+
+  fixedExpenseId String
+  fixedExpense   FixedExpense @relation(fields: [fixedExpenseId], references: [id])
+
+  monthId String?
+  month   Month?  @relation(fields: [monthId], references: [id])
+
+  @@unique([fixedExpenseId, dueDate])
+}
+
+// Compras parceladas: cartão, CDC, financiamento
+model Installment {
+  id           String   @id @default(cuid())
+  title        String
+  store        String?
+  totalAmount  Float
+  totalParcels Int
+  paidParcels  Int      @default(0)
+  cardName     String?
+  startDate    DateTime
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
+
+  categoryId String
+  category   Category @relation(fields: [categoryId], references: [id])
+
+  // Valor por parcela calculado na aplicação: totalAmount / totalParcels
+}
+
+// Aportes e posições de investimento
+model Investment {
+  id          String         @id @default(cuid())
+  title       String
+  type        InvestmentType
+  amount      Float          // valor atual da posição
+  returnPct   Float          @default(0) // retorno em %
+  portfolioPct Float         @default(0) // % da carteira total
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
+
+  history InvestmentSnapshot[]
+}
+
+// Histórico mensal de valor dos investimentos (para o gráfico de linha)
+model InvestmentSnapshot {
+  id        String   @id @default(cuid())
+  amount    Float
+  returnPct Float
+  recordedAt DateTime @default(now())
+
+  investmentId String
+  investment   Investment @relation(fields: [investmentId], references: [id])
+}
+
+// Meta de orçamento por categoria, vinculada a um mês
+model Budget {
+  id           String   @id @default(cuid())
+  budgetAmount Float
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
+
+  categoryId String
+  category   Category @relation(fields: [categoryId], references: [id])
+
+  monthId String
+  month   Month  @relation(fields: [monthId], references: [id])
+
+  @@unique([userId, categoryId, monthId])
+}
+
+// Mês de referência — agrupa transações, pagamentos e orçamentos
+model Month {
+  id        String   @id @default(cuid())
+  year      Int
+  month     Int      // 1–12
+  createdAt DateTime @default(now())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
+
+  transactions         Transaction[]
+  fixedExpensePayments FixedExpensePayment[]
+  budgets              Budget[]
+
+  @@unique([userId, year, month])
+}

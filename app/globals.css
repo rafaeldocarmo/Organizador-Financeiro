@@ -1,0 +1,82 @@
+@import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&display=swap');
+@import "tailwindcss";
+
+:root {
+  /* — surfaces (warm near-black) — */
+  --bg:           oklch(0.155 0.004 95);
+  --bg-2:         oklch(0.185 0.005 95);
+  --surface:      oklch(0.215 0.005 95);
+  --surface-2:    oklch(0.255 0.006 95);
+  --surface-3:    oklch(0.305 0.007 95);
+  --hairline:     oklch(0.32 0.005 95 / 0.55);
+  --hairline-2:   oklch(0.40 0.005 95 / 0.35);
+
+  /* — text — */
+  --ink:          oklch(0.975 0.004 95);
+  --ink-2:        oklch(0.83 0.005 95);
+  --muted:        oklch(0.62 0.006 95);
+  --subtle:       oklch(0.46 0.006 95);
+  --faint:        oklch(0.36 0.006 95);
+
+  /* — accent (the "money" lime) — */
+  --lime:         oklch(0.88 0.19 128);
+  --lime-2:       oklch(0.78 0.18 128);
+  --lime-soft:    oklch(0.88 0.19 128 / 0.14);
+  --lime-line:    oklch(0.88 0.19 128 / 0.30);
+
+  /* — semantic — */
+  --income:       oklch(0.82 0.16 148);
+  --spend:        oklch(0.74 0.16 24);
+  --spend-soft:   oklch(0.74 0.16 24 / 0.16);
+  --invest:       oklch(0.78 0.13 268);
+  --invest-soft:  oklch(0.78 0.13 268 / 0.16);
+  --saving:       oklch(0.84 0.13 80);
+  --saving-soft:  oklch(0.84 0.13 80 / 0.16);
+
+  /* — typography — */
+  --font-ui:      var(--font-geist-sans), -apple-system, system-ui, sans-serif;
+  --font-mono:    var(--font-geist-mono), ui-monospace, 'SF Mono', monospace;
+  --font-display: 'Instrument Serif', 'Iowan Old Style', Georgia, serif;
+
+  /* — radii — */
+  --r-xs: 6px;
+  --r-sm: 10px;
+  --r-md: 14px;
+  --r-lg: 20px;
+  --r-xl: 28px;
+  --r-2xl: 36px;
+
+  /* — shadows — */
+  --shadow-card: 0 1px 0 oklch(1 0 0 / 0.04) inset, 0 0 0 1px oklch(1 0 0 / 0.04);
+  --shadow-pop:  0 8px 28px oklch(0 0 0 / 0.4), 0 0 0 1px oklch(1 0 0 / 0.06);
+}
+
+/* — Reset within mira root — */
+.mira, .mira *, .mira *::before, .mira *::after {
+  box-sizing: border-box;
+}
+.mira {
+  font-family: var(--font-ui);
+  color: var(--ink);
+  background: var(--bg);
+  -webkit-font-smoothing: antialiased;
+  font-feature-settings: 'cv11', 'ss01', 'ss03';
+  letter-spacing: -0.011em;
+}
+.mira button { font-family: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+.mira input, .mira textarea { font-family: inherit; color: inherit; background: none; border: 0; outline: none; }
+
+/* — Numerals — */
+.num    { font-family: var(--font-mono); font-feature-settings: 'tnum', 'zero'; letter-spacing: -0.02em; }
+.serif  { font-family: var(--font-display); font-style: italic; letter-spacing: -0.01em; }
+
+/* — Hide native scrollbars inside cards — */
+.mira ::-webkit-scrollbar { width: 0; height: 0; }
+.mira { scrollbar-width: none; }
+
+/* — Pulse animation — */
+@keyframes mira-pulse {
+  0%, 100% { opacity: 0.55; }
+  50%      { opacity: 1; }
+}
+.pulse { animation: mira-pulse 2.4s ease-in-out infinite; }
