@@ -14,12 +14,6 @@ enum TransactionType {
   EXPENSE
 }
 
-enum RecurrencePeriod {
-  WEEKLY
-  MONTHLY
-  ANNUAL
-}
-
 enum InvestmentType {
   FIXED_INCOME    // Renda Fixa
   VARIABLE_INCOME // Renda Variável
@@ -42,7 +36,6 @@ model User {
 
   categories    Category[]
   transactions  Transaction[]
-  fixedExpenses FixedExpense[]
   installments  Installment[]
   investments   Investment[]
   budgets       Budget[]
@@ -99,7 +92,6 @@ model Category {
   user   User?   @relation(fields: [userId], references: [id])
 
   transactions  Transaction[]
-  fixedExpenses FixedExpense[]
   installments  Installment[]
   budgets       Budget[]
 
@@ -117,7 +109,7 @@ model Transaction {
   hasAttachment Boolean       @default(false)
   isCredit    Boolean         @default(false) // true = cartão de crédito (avulso)
   received    Boolean         @default(true)  // para receitas: false = previsto, não recebido
-  isRecurring Boolean         @default(false) // para receitas: true = renda recorrente
+  isRecurring Boolean         @default(false) // true = é um template recorrente; clones têm false
   createdAt   DateTime        @default(now())
   updatedAt   DateTime        @updatedAt
 
@@ -129,43 +121,13 @@ model Transaction {
 
   monthId String?
   month   Month?  @relation(fields: [monthId], references: [id])
-}
 
-// Gastos fixos recorrentes: aluguel, plano de saúde, assinaturas, etc.
-model FixedExpense {
-  id          String           @id @default(cuid())
-  title       String
-  description String?
-  amount      Float
-  recurrence  RecurrencePeriod @default(MONTHLY)
-  nextDueDate DateTime
-  createdAt   DateTime         @default(now())
-  updatedAt   DateTime         @updatedAt
+  // Recorrência: template <-> clones. Clones de um template carregam recurringTemplateId.
+  recurringTemplateId String?
+  recurringTemplate   Transaction?  @relation("RecurringClones", fields: [recurringTemplateId], references: [id], onDelete: SetNull)
+  recurringClones     Transaction[] @relation("RecurringClones")
 
-  userId String
-  user   User   @relation(fields: [userId], references: [id])
-
-  categoryId String
-  category   Category @relation(fields: [categoryId], references: [id])
-
-  // Registros de pagamento mês a mês
-  payments FixedExpensePayment[]
-}
-
-// Controla se um gasto fixo foi pago em determinado mês
-model FixedExpensePayment {
-  id      String   @id @default(cuid())
-  paid    Boolean  @default(false)
-  paidAt  DateTime?
-  dueDate DateTime
-
-  fixedExpenseId String
-  fixedExpense   FixedExpense @relation(fields: [fixedExpenseId], references: [id])
-
-  monthId String?
-  month   Month?  @relation(fields: [monthId], references: [id])
-
-  @@unique([fixedExpenseId, dueDate])
+  @@index([recurringTemplateId, monthId])
 }
 
 // Compras parceladas: cartão, CDC, financiamento
@@ -247,9 +209,8 @@ model Month {
   userId String
   user   User   @relation(fields: [userId], references: [id])
 
-  transactions         Transaction[]
-  fixedExpensePayments FixedExpensePayment[]
-  budgets              Budget[]
+  transactions Transaction[]
+  budgets      Budget[]
 
   @@unique([userId, year, month])
 }

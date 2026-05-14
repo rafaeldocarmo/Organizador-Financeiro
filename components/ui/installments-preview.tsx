@@ -7,6 +7,7 @@ import Glyph from '@/components/ui/glyph';
 import Pips from '@/components/charts/pips';
 import { I } from '@/components/ui/icons';
 import { resolveIcon } from '@/data/categories';
+import { displayRange, parcelNumber } from '@/lib/installments';
 
 interface Installment {
   id: string;
@@ -25,14 +26,14 @@ function fmt(n: number, decimals = 2) {
   return n.toLocaleString('pt-BR', { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
 }
 
-/** Returns the 1-based parcel number paid so far, based on elapsed months from startDate. */
+/** Returns how many parcels have already been "paid" (displayed) up to this month. */
 function elapsedParcels(inst: Installment, year: number, month: number): number {
   const start = new Date(inst.startDate);
-  const startIdx = start.getFullYear() * 12 + (start.getMonth() + 1);
+  const startIdx = start.getUTCFullYear() * 12 + (start.getUTCMonth() + 1);
   const curIdx = year * 12 + month;
-  const elapsed = curIdx - startIdx;
-  if (elapsed < 0) return 0;
-  return Math.min(elapsed, inst.totalParcels);
+  const parcel = parcelNumber(startIdx, inst.totalParcels, curIdx);
+  if (parcel === null) return curIdx < startIdx - 1 ? 0 : inst.totalParcels;
+  return parcel - 1;
 }
 
 interface PreviewProps {
@@ -50,13 +51,13 @@ export default function InstallmentsPreview({ year: yearProp, month: monthProp }
 
   if (!items) return null;
 
-  // Active = current month is within [start, start + total - 1]
+  // Active = current month is in the display range (one month before fatura).
   const active = items.filter(inst => {
     const start = new Date(inst.startDate);
-    const startIdx = start.getFullYear() * 12 + (start.getMonth() + 1);
+    const startIdx = start.getUTCFullYear() * 12 + (start.getUTCMonth() + 1);
     const curIdx = year * 12 + month;
-    const endIdx = startIdx + inst.totalParcels - 1;
-    return curIdx >= startIdx && curIdx <= endIdx;
+    const { start: dispStart, end: dispEnd } = displayRange(startIdx, inst.totalParcels);
+    return curIdx >= dispStart && curIdx <= dispEnd;
   });
 
   if (active.length === 0) return null;
@@ -91,8 +92,8 @@ export default function InstallmentsPreview({ year: yearProp, month: monthProp }
         return (
           <div style={{ display: 'flex', alignItems: 'baseline', marginTop: 14 }}>
             <span className="num" style={{ fontSize: 13, color: 'var(--muted)', marginRight: 4 }}>R$</span>
-            <span className="serif" style={{ fontSize: 42, lineHeight: 1, letterSpacing: '-0.02em' }}>{intPart}</span>
-            <span className="serif" style={{ fontSize: 22, color: 'var(--muted)' }}>,{centsPart}</span>
+            <span className="num" style={{ fontSize: 42, lineHeight: 1, fontWeight: 300 }}>{intPart}</span>
+            <span className="num" style={{ fontSize: 22, color: 'var(--muted)', fontWeight: 300 }}>,{centsPart}</span>
           </div>
         );
       })()}

@@ -84,6 +84,7 @@ export default function ScreenIncome() {
       description: x.description,
       received: x.received,
       isRecurring: x.isRecurring,
+      isCredit: false,
     });
   }
 
@@ -144,7 +145,7 @@ export default function ScreenIncome() {
           Entrou em {monthName}
         </div>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginTop: 6 }}>
-          <span className="serif" style={{ fontSize: 50, lineHeight: 1, color: 'var(--income)' }}>
+          <span className="num" style={{ fontSize: 50, lineHeight: 1, fontWeight: 300, color: 'var(--income)' }}>
             +{brlShort(received)}
           </span>
         </div>

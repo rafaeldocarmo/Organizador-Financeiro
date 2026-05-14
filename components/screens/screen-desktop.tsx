@@ -158,7 +158,7 @@ export default function ScreenDesktop() {
                   <div style={{ fontSize: 11.5, color: 'var(--muted)', letterSpacing: '0.1em', textTransform: 'uppercase' }}>Saldo · maio</div>
                   <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginTop: 8 }}>
                     <span style={{ fontSize: 22, color: 'var(--muted)' }} className="num">R$</span>
-                    <span className="serif" style={{ fontSize: 64, lineHeight: 1 }}>
+                    <span className="num" style={{ fontSize: 64, lineHeight: 1, fontWeight: 300 }}>
                       8.247<span style={{ fontSize: 32, color: 'var(--muted)' }}>,32</span>
                     </span>
                   </div>
@@ -202,7 +202,7 @@ export default function ScreenDesktop() {
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                 <div>
                   <div style={{ fontSize: 11.5, color: 'var(--muted)', letterSpacing: '0.1em', textTransform: 'uppercase' }}>Patrimônio investido</div>
-                  <div className="serif" style={{ fontSize: 38, lineHeight: 1, marginTop: 8 }}>R$ 14.620</div>
+                  <div className="num" style={{ fontSize: 38, lineHeight: 1, marginTop: 8, fontWeight: 300 }}>R$ 14.620</div>
                   <div style={{ display: 'flex', gap: 6, marginTop: 12 }}>
                     <Chip dot color="var(--invest)" style={{ background: 'transparent', borderColor: 'oklch(0.78 0.13 268 / 0.4)', color: 'var(--invest)' }}>
                       <I.trend s={11} sw={2} /> <span className="num">+R$ 2.620</span>

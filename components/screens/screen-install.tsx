@@ -11,6 +11,7 @@ import Pips from '@/components/charts/pips';
 import { I } from '@/components/ui/icons';
 import { resolveIcon } from '@/data/categories';
 import { brl, brlShort } from '@/lib/formatters';
+import { parcelNumber } from '@/lib/installments';
 
 interface Installment {
   id: string;
@@ -30,11 +31,8 @@ interface Installment {
 /** 1-based parcel number for (year, month), or null if inactive that month. */
 function parcelInMonth(inst: Installment, year: number, month: number): number | null {
   const start = new Date(inst.startDate);
-  const startIdx = start.getFullYear() * 12 + (start.getMonth() + 1);
-  const curIdx = year * 12 + month;
-  const endIdx = startIdx + inst.totalParcels - 1;
-  if (curIdx < startIdx || curIdx > endIdx) return null;
-  return curIdx - startIdx + 1;
+  const startIdx = start.getUTCFullYear() * 12 + (start.getUTCMonth() + 1);
+  return parcelNumber(startIdx, inst.totalParcels, year * 12 + month);
 }
 
 export default function ScreenInstall() {
@@ -93,7 +91,7 @@ export default function ScreenInstall() {
         <div style={{ fontSize: 11.5, color: 'var(--muted)', letterSpacing: '0.1em', textTransform: 'uppercase' }}>
           Fatura · {monthCap}
         </div>
-        <div className="serif" style={{ fontSize: 42, lineHeight: 1, marginTop: 6 }}>{brlShort(monthlyTotal)}</div>
+        <div className="num" style={{ fontSize: 42, lineHeight: 1, marginTop: 6, fontWeight: 300 }}>{brlShort(monthlyTotal)}</div>
         <div style={{ display: 'flex', gap: 8, marginTop: 12, fontSize: 12, flexWrap: 'wrap' }}>
           {remainingTotal > 0 && (
             <Chip dim>Restam {brlShort(remainingTotal)} no total</Chip>

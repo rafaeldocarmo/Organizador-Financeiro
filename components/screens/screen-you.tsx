@@ -120,8 +120,8 @@ export default function ScreenYou() {
             <span className="num" style={{ fontSize: 13, color: 'var(--muted)', marginRight: 4 }}>
               {netWorth < 0 ? '−' : ''}R$
             </span>
-            <span className="serif" style={{
-              fontSize: 42, lineHeight: 1, letterSpacing: '-0.02em',
+            <span className="num" style={{
+              fontSize: 42, lineHeight: 1, fontWeight: 300,
               color: netWorth < 0 ? 'var(--spend)' : 'var(--ink)',
             }}>
               {Math.abs(Math.round(netWorth)).toLocaleString('pt-BR')}
@@ -152,8 +152,8 @@ export default function ScreenYou() {
             <span className="num" style={{ fontSize: 13, color: 'var(--muted)', marginRight: 4 }}>
               {savings < 0 ? '−' : ''}R$
             </span>
-            <span className="serif" style={{
-              fontSize: 38, lineHeight: 1, letterSpacing: '-0.02em',
+            <span className="num" style={{
+              fontSize: 38, lineHeight: 1, fontWeight: 300,
               color: savings < 0 ? 'var(--spend)' : 'var(--ink)',
             }}>
               {Math.abs(Math.round(savings)).toLocaleString('pt-BR')}

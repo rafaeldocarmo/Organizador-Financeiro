@@ -12,6 +12,7 @@ export default auth((req) => {
     PUBLIC_PATHS.some((p) => path.startsWith(p))
     || PUBLIC_FILES.includes(path)
     || path.startsWith("/api/auth")
+    || path.startsWith("/api/cron/")  // cron auths via Bearer CRON_SECRET
     || path.startsWith("/icons/");
 
   if (isPublic) return;

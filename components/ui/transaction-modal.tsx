@@ -19,6 +19,7 @@ export interface TransactionForEdit {
   description: string | null;
   received: boolean;
   isRecurring: boolean;
+  isCredit: boolean;
 }
 
 interface Props {
@@ -29,6 +30,7 @@ interface Props {
   initialData?: TransactionForEdit;
   onUpdate?: (tx: unknown) => void;
   onDelete?: (id: string) => void;
+  defaultRecurring?: boolean;
 }
 
 // ─── constants ───────────────────────────────────────────────────────────────
@@ -66,6 +68,7 @@ function slugify(name: string): string {
 export default function TransactionModal({
   type: typeProp, open, onClose, onAdd,
   initialData, onUpdate, onDelete,
+  defaultRecurring = false,
 }: Props) {
   const isEdit = !!initialData;
 
@@ -83,8 +86,15 @@ export default function TransactionModal({
   const [payMethod, setPayMethod]   = useState<'debit' | 'credit'>('debit');
   const [installment, setInstall]   = useState(false);
   const [installQty, setInstallQty] = useState('');
-  const [faturaYear, setFaturaYear] = useState(() => new Date().getFullYear());
-  const [faturaMonth, setFaturaMonth] = useState(() => new Date().getMonth() + 1);
+  // Fatura default = next month (purchases now usually land on next bill)
+  const [faturaYear, setFaturaYear] = useState(() => {
+    const n = new Date();
+    return n.getMonth() === 11 ? n.getFullYear() + 1 : n.getFullYear();
+  });
+  const [faturaMonth, setFaturaMonth] = useState(() => {
+    const n = new Date();
+    return n.getMonth() === 11 ? 1 : n.getMonth() + 2;
+  });
 
   // categories
   const [cats, setCats]             = useState<Category[]>([]);
@@ -120,12 +130,16 @@ export default function TransactionModal({
       setDesc(initialData.description ?? '');
       setReceived(initialData.received);
       setRecurring(initialData.isRecurring);
+      setPayMethod(initialData.isCredit ? 'credit' : 'debit');
     } else {
       setTxType(typeProp ?? 'EXPENSE');
       setAmount(''); setTitle(''); setDate(today()); setCatId('');
-      setDesc(''); setRecurring(false); setReceived(true);
+      setDesc(''); setRecurring(defaultRecurring); setReceived(true);
       setPayMethod('debit'); setInstall(false); setInstallQty('');
-      const n = new Date(); setFaturaYear(n.getFullYear()); setFaturaMonth(n.getMonth() + 1);
+      const n = new Date();
+      const nextY = n.getMonth() === 11 ? n.getFullYear() + 1 : n.getFullYear();
+      const nextM = n.getMonth() === 11 ? 1 : n.getMonth() + 2;
+      setFaturaYear(nextY); setFaturaMonth(nextM);
       setAddingCat(false); setNewName(''); setNewIcon('cup'); setNewColor(CAT_COLORS[0]);
     }
     setConfirmDel(false); setSaving(false); setDeleting(false);
@@ -173,6 +187,7 @@ export default function TransactionModal({
             description: desc.trim() || null,
             received: txType === 'INCOME' ? received : undefined,
             isRecurring,
+            ...(txType === 'EXPENSE' ? { isCredit: payMethod === 'credit' } : {}),
           }),
         });
         const data = await r.json();
@@ -234,6 +249,7 @@ export default function TransactionModal({
         position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 201,
         background: 'var(--bg-2)', borderRadius: '24px 24px 0 0',
         maxHeight: '92dvh', display: 'flex', flexDirection: 'column',
+        overflowX: 'hidden',
       }}>
         {/* handle */}
         <div style={{ display: 'flex', justifyContent: 'center', padding: '10px 0 2px' }}>
@@ -264,7 +280,7 @@ export default function TransactionModal({
         </div>
 
         {/* body */}
-        <div style={{ overflowY: 'auto', flex: 1, padding: '0 20px' }}>
+        <div style={{ overflowY: 'auto', overflowX: 'hidden', flex: 1, padding: '0 20px' }}>
 
           {/* amount */}
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '4px 0 20px', gap: 4 }}>
@@ -280,8 +296,8 @@ export default function TransactionModal({
             />
           </div>
 
-          {/* payment method — create mode only */}
-          {!isEdit && txType === 'EXPENSE' && (
+          {/* payment method */}
+          {txType === 'EXPENSE' && (
             <Field label="Pagamento">
               <SegControl
                 options={[{ value: 'debit', label: 'Débito' }, { value: 'credit', label: 'Crédito' }]}
@@ -451,7 +467,8 @@ export default function TransactionModal({
             )}
             <Toggle
               label={txType === 'INCOME' ? 'Renda recorrente' : 'Gasto recorrente'}
-              sub="Repete todo mês" value={isRecurring} onChange={setRecurring} color={accent}
+              sub="Repete todo mês automaticamente"
+              value={isRecurring} onChange={setRecurring} color={accent}
             />
           </div>
 

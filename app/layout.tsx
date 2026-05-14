@@ -45,12 +45,10 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="pt-BR" className={`${geistSans.variable} ${geistMono.variable}`}>
-      <body>
+    <html lang="pt-BR" className={`${geistSans.variable} ${geistMono.variable}`} suppressHydrationWarning>
+      <body className="mira" style={{ minHeight: '100dvh' }} suppressHydrationWarning>
         <AuthSessionProvider>
-          <div className="mira" style={{ minHeight: '100dvh' }}>
-            {children}
-          </div>
+          {children}
         </AuthSessionProvider>
         <ServiceWorkerRegistrar />
       </body>

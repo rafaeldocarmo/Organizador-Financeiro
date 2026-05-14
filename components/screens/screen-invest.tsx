@@ -148,7 +148,7 @@ export default function ScreenInvest() {
         <div style={{ fontSize: 11.5, color: 'var(--muted)', letterSpacing: '0.1em', textTransform: 'uppercase' }}>
           Aportes · {monthCap}
         </div>
-        <div className="serif" style={{ fontSize: 50, lineHeight: 1, marginTop: 6, color: total < 0 ? 'var(--spend)' : 'var(--ink)' }}>
+        <div className="num" style={{ fontSize: 50, lineHeight: 1, marginTop: 6, fontWeight: 300, color: total < 0 ? 'var(--spend)' : 'var(--ink)' }}>
           {total < 0 ? '−' : ''}{brlShort(Math.abs(total))}
         </div>
         {holdings.length > 0 && (

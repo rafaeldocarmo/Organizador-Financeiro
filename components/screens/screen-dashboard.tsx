@@ -5,12 +5,12 @@ import { useFetch, bustCache } from '@/lib/use-fetch';
 import Logo from '@/components/ui/logo';
 import Card from '@/components/ui/card';
 import Chip from '@/components/ui/chip';
+import Segments from '@/components/ui/segments';
 import TabBar from '@/components/ui/tab-bar';
 import TransactionModal from '@/components/ui/transaction-modal';
+import PaymentMethodSheet from '@/components/ui/payment-method-sheet';
 import FixedExpensesPreview from '@/components/ui/fixed-expenses-preview';
 import InstallmentsPreview from '@/components/ui/installments-preview';
-import Sec from '@/components/ui/sec';
-import TxRow from '@/components/ui/tx-row';
 import Spark from '@/components/charts/spark';
 import Bars from '@/components/charts/bars';
 import Donut from '@/components/charts/donut';
@@ -22,6 +22,8 @@ import { brl, brlShort } from '@/lib/formatters';
 interface DashboardData {
   income: number;
   expense: number;
+  debit: number;
+  credit: number;
   trend: { label: string; v: number }[];
   categoryBreakdown: {
     id: string;
@@ -30,26 +32,20 @@ interface DashboardData {
     color: string;
     total: number;
   }[];
-  recentTransactions: {
-    id: string;
-    title: string;
-    description: string | null;
-    amount: number;
-    type: 'INCOME' | 'EXPENSE';
-    date: string;
-    category: { icon: string; color: string; name: string };
-  }[];
 }
 
 export default function ScreenDashboard() {
   const now = new Date();
   const [year, setYear]   = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth() + 1);
+  const [mode, setMode]   = useState<'all' | 'variable'>('all');
   const [addOpen, setAddOpen] = useState(false);
+  const [paymentSheet, setPaymentSheet] = useState<'debit' | 'credit' | null>(null);
   const [tick, setTick] = useState(0);
 
+  const modeParam = mode === 'variable' ? '&mode=variable' : '';
   const { data } = useFetch<DashboardData>(
-    `/api/dashboard?year=${year}&month=${month}`,
+    `/api/dashboard?year=${year}&month=${month}${modeParam}`,
     tick,
   );
 
@@ -63,11 +59,12 @@ export default function ScreenDashboard() {
 
   const income = data?.income ?? 0;
   const expense = data?.expense ?? 0;
+  const debit  = data?.debit  ?? 0;
+  const credit = data?.credit ?? 0;
   const balance = income - expense;
   const trend = data?.trend ?? [];
   const breakdown = data?.categoryBreakdown ?? [];
   const breakdownTotal = breakdown.reduce((s, b) => s + b.total, 0);
-  const recent = data?.recentTransactions ?? [];
 
   const refDate = new Date(year, month - 1, 1);
   const monthName = refDate.toLocaleString('pt-BR', { month: 'long' });
@@ -120,15 +117,26 @@ export default function ScreenDashboard() {
         </button>
       </div>
 
+      <div style={{ padding: '4px 20px 8px', display: 'flex', justifyContent: 'center' }}>
+        <Segments
+          items={[
+            { id: 'all',      label: 'Tudo'      },
+            { id: 'variable', label: 'Variáveis' },
+          ]}
+          active={mode}
+          onChange={(v) => setMode(v as 'all' | 'variable')}
+        />
+      </div>
+
       <div style={{ padding: '8px 20px 16px' }}>
         <div style={{ fontSize: 11.5, color: 'var(--muted)', letterSpacing: '0.1em', textTransform: 'uppercase' }}>
-          Saldo · {monthCap}
+          Saldo · {monthCap}{mode === 'variable' ? ' · variáveis' : ''}
         </div>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginTop: 6 }}>
-          <span style={{ fontSize: 22, color: 'var(--muted)', fontFamily: 'var(--font-mono)' }}>
+          <span className="num" style={{ fontSize: 22, color: 'var(--muted)' }}>
             {data && balance < 0 ? '−' : ''}R$
           </span>
-          <span className="serif" style={{ fontSize: 56, lineHeight: 1, color: data && balance < 0 ? 'var(--spend)' : 'var(--ink)' }}>
+          <span className="num" style={{ fontSize: 56, lineHeight: 1, fontWeight: 300, color: data && balance < 0 ? 'var(--spend)' : 'var(--ink)' }}>
             {data ? brlShort(Math.abs(balance)).replace('R$ ', '') : '—'}
           </span>
         </div>
@@ -161,6 +169,83 @@ export default function ScreenDashboard() {
           </Card>
         ))}
       </div>
+
+      {(debit > 0 || credit > 0) && (
+        <div style={{ padding: '20px 20px 0' }}>
+          <Card pad={16}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div>
+                <div style={{ fontSize: 13.5, fontWeight: 500 }}>Débito × Crédito</div>
+                <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 2 }}>Como você gastou em {monthName}</div>
+              </div>
+            </div>
+
+            {(() => {
+              const total = debit + credit;
+              const dPct = total > 0 ? (debit  / total) * 100 : 0;
+              const cPct = total > 0 ? (credit / total) * 100 : 0;
+              return (
+                <>
+                  <div style={{
+                    marginTop: 18, height: 12, borderRadius: 6, overflow: 'hidden',
+                    display: 'flex', background: 'var(--surface-2)',
+                  }}>
+                    {debit  > 0 && <div style={{ width: `${dPct}%`, background: 'var(--income)', transition: 'width .25s' }} />}
+                    {credit > 0 && <div style={{ width: `${cPct}%`, background: 'var(--spend)',  transition: 'width .25s' }} />}
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 14 }}>
+                    <button
+                      onClick={() => setPaymentSheet('debit')}
+                      style={{
+                        textAlign: 'left',
+                        padding: '10px 12px', borderRadius: 12, cursor: 'pointer',
+                        background: 'var(--surface-2)', border: '1px solid var(--hairline)',
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <span style={{ width: 6, height: 6, borderRadius: 99, background: 'var(--income)' }} />
+                          <span style={{ fontSize: 11, color: 'var(--muted)', letterSpacing: '0.04em', textTransform: 'uppercase' }}>Débito</span>
+                        </div>
+                        <I.chev s={11} sw={2} style={{ color: 'var(--muted)' }} />
+                      </div>
+                      <div className="num" style={{ fontSize: 15, fontWeight: 500, marginTop: 4, letterSpacing: '-0.01em' }}>
+                        {brlShort(debit)}
+                      </div>
+                      <div style={{ fontSize: 10.5, color: 'var(--muted)', marginTop: 1 }}>
+                        <span className="num">{dPct.toFixed(0)}%</span> do gasto
+                      </div>
+                    </button>
+                    <button
+                      onClick={() => setPaymentSheet('credit')}
+                      style={{
+                        textAlign: 'left',
+                        padding: '10px 12px', borderRadius: 12, cursor: 'pointer',
+                        background: 'var(--surface-2)', border: '1px solid var(--hairline)',
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <span style={{ width: 6, height: 6, borderRadius: 99, background: 'var(--spend)' }} />
+                          <span style={{ fontSize: 11, color: 'var(--muted)', letterSpacing: '0.04em', textTransform: 'uppercase' }}>Crédito</span>
+                        </div>
+                        <I.chev s={11} sw={2} style={{ color: 'var(--muted)' }} />
+                      </div>
+                      <div className="num" style={{ fontSize: 15, fontWeight: 500, marginTop: 4, letterSpacing: '-0.01em' }}>
+                        {brlShort(credit)}
+                      </div>
+                      <div style={{ fontSize: 10.5, color: 'var(--muted)', marginTop: 1 }}>
+                        <span className="num">{cPct.toFixed(0)}%</span> do gasto
+                      </div>
+                    </button>
+                  </div>
+                </>
+              );
+            })()}
+          </Card>
+        </div>
+      )}
 
       {trend.length > 0 && (
         <div style={{ padding: '20px 20px 0' }}>
@@ -221,35 +306,17 @@ export default function ScreenDashboard() {
         </div>
       )}
 
-      <div style={{ padding: '20px 20px 0' }}>
-        <FixedExpensesPreview year={year} month={month} />
-      </div>
+      {mode === 'all' && (
+        <>
+          <div style={{ padding: '20px 20px 0' }}>
+            <FixedExpensesPreview year={year} month={month} />
+          </div>
 
-      <div style={{ padding: '20px 20px 0' }}>
-        <InstallmentsPreview year={year} month={month} />
-      </div>
-
-      <div style={{ padding: '0 20px' }}>
-        <Sec title={isCurrentMonth ? 'Movimentações de hoje' : 'Movimentações do mês'} action="Ver tudo" mt={20} />
-        <Card pad={0} style={{ padding: '4px 16px' }}>
-          {recent.length === 0 ? (
-            <div style={{ padding: '20px 0', textAlign: 'center', color: 'var(--muted)', fontSize: 13 }}>
-              Nenhuma movimentação hoje
-            </div>
-          ) : recent.map((tx, i) => (
-            <TxRow
-              key={tx.id}
-              icon={resolveIcon(tx.category.icon)}
-              color={tx.category.color}
-              title={tx.title}
-              sub={`${new Date(tx.date).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })} · ${tx.category.name}`}
-              amount={tx.amount}
-              sign={tx.type === 'INCOME' ? 1 : -1}
-              divider={i < recent.length - 1}
-            />
-          ))}
-        </Card>
-      </div>
+          <div style={{ padding: '20px 20px 0' }}>
+            <InstallmentsPreview year={year} month={month} />
+          </div>
+        </>
+      )}
 
       <div style={{ height: 110 }} />
       <TabBar active="home" onFab={() => setAddOpen(true)} />
@@ -257,6 +324,14 @@ export default function ScreenDashboard() {
         open={addOpen}
         onClose={() => setAddOpen(false)}
         onAdd={() => { bustCache('/api/'); setTick(t => t + 1); }}
+      />
+      <PaymentMethodSheet
+        open={paymentSheet !== null}
+        payment={paymentSheet ?? 'debit'}
+        year={year}
+        month={month}
+        mode={mode}
+        onClose={() => setPaymentSheet(null)}
       />
     </>
   );

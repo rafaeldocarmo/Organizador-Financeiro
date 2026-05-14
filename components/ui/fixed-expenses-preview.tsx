@@ -7,29 +7,14 @@ import Glyph from '@/components/ui/glyph';
 import { I } from '@/components/ui/icons';
 import { resolveIcon } from '@/data/categories';
 
-interface FixedExpense {
-  id: string;
-  title: string;
-  amount: number;
-  nextDueDate: string;
-  paid: boolean;
-  category: { icon: string; color: string; name: string };
-}
-
 interface RecurringTx {
   id: string;
   title: string;
   amount: number;
   date: string;
   isRecurring: boolean;
+  recurringTemplateId: string | null;
   type: 'EXPENSE' | 'INCOME';
-  category: { icon: string; color: string; name: string };
-}
-
-interface Item {
-  id: string;
-  title: string;
-  amount: number;
   category: { icon: string; color: string; name: string };
 }
 
@@ -44,17 +29,11 @@ export default function FixedExpensesPreview({ year: yearProp, month: monthProp 
   const month = monthProp ?? now.getMonth() + 1;
   const monthName = new Date(year, month - 1, 1).toLocaleString('pt-BR', { month: 'long' });
 
-  const { data: fixedRaw } = useFetch<FixedExpense[]>(`/api/fixed-expenses?year=${year}&month=${month}`);
-  const { data: txRaw }    = useFetch<RecurringTx[]>(`/api/transactions?type=EXPENSE&year=${year}&month=${month}&limit=200`);
+  const { data: txRaw } = useFetch<RecurringTx[]>(`/api/transactions?type=EXPENSE&year=${year}&month=${month}&limit=200`);
 
-  const fixed: Item[] = Array.isArray(fixedRaw)
-    ? fixedRaw.map(f => ({ id: f.id, title: f.title, amount: f.amount, category: f.category }))
+  const items = Array.isArray(txRaw)
+    ? txRaw.filter(t => t.type === 'EXPENSE' && (t.isRecurring || t.recurringTemplateId != null))
     : [];
-  const recurring: Item[] = Array.isArray(txRaw)
-    ? txRaw.filter(t => t.isRecurring && t.type === 'EXPENSE')
-        .map(t => ({ id: `tx-${t.id}`, title: t.title, amount: t.amount, category: t.category }))
-    : [];
-  const items = [...fixed, ...recurring];
 
   if (items.length === 0) return null;
 
@@ -85,8 +64,8 @@ export default function FixedExpensesPreview({ year: yearProp, month: monthProp 
 
       <div style={{ display: 'flex', alignItems: 'baseline', marginTop: 14 }}>
         <span className="num" style={{ fontSize: 13, color: 'var(--muted)', marginRight: 4 }}>R$</span>
-        <span className="serif" style={{ fontSize: 42, lineHeight: 1, letterSpacing: '-0.02em' }}>{intPart}</span>
-        <span className="serif" style={{ fontSize: 22, color: 'var(--muted)' }}>,{centsPart}</span>
+        <span className="num" style={{ fontSize: 42, lineHeight: 1, fontWeight: 300 }}>{intPart}</span>
+        <span className="num" style={{ fontSize: 22, color: 'var(--muted)', fontWeight: 300 }}>,{centsPart}</span>
       </div>
 
       <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 6, letterSpacing: '0.01em' }}>

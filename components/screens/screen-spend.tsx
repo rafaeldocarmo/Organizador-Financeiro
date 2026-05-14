@@ -10,6 +10,7 @@ import TransactionModal, { TransactionForEdit } from '@/components/ui/transactio
 import { I } from '@/components/ui/icons';
 import { resolveIcon } from '@/data/categories';
 import { brl } from '@/lib/formatters';
+import { parcelNumber } from '@/lib/installments';
 
 // ─── types ────────────────────────────────────────────────────────────────────
 
@@ -22,6 +23,7 @@ interface Transaction {
   hasAttachment: boolean;
   received: boolean;
   isRecurring: boolean;
+  isCredit: boolean;
   categoryId: string;
   category: { icon: string; color: string; name: string };
   parcelInfo?: string; // e.g. "3/12"
@@ -40,20 +42,28 @@ interface Installment {
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
+/**
+ * Parse an ISO/YYYY-MM-DD string as a *local* Date.
+ * Server stores dates as UTC midnight; `new Date(iso)` would shift them
+ * one day back in negative-offset timezones (e.g. BRT). Take only the
+ * YYYY-MM-DD portion and build a local Date.
+ */
+function parseLocalDate(s: string): Date {
+  const [y, m, d] = s.slice(0, 10).split('-').map(Number);
+  return new Date(y, (m ?? 1) - 1, d ?? 1);
+}
+
 /** Returns the 1-based parcel number for month (year, month), or null if inactive. */
 function parcelInMonth(inst: Installment, year: number, month: number): number | null {
-  const start = new Date(inst.startDate);
+  const start = parseLocalDate(inst.startDate);
   const startIdx = start.getFullYear() * 12 + (start.getMonth() + 1);
-  const curIdx   = year * 12 + month;
-  const endIdx   = startIdx + inst.totalParcels - 1;
-  if (curIdx < startIdx || curIdx > endIdx) return null;
-  return curIdx - startIdx + 1;
+  return parcelNumber(startIdx, inst.totalParcels, year * 12 + month);
 }
 
 /** Map an active installment to a Transaction-shaped entry for the given month. */
 function installmentToEntry(inst: Installment, year: number, month: number, parcel: number): Transaction {
   // Use first day of the month as the display date
-  const d = new Date(inst.startDate);
+  const d = parseLocalDate(inst.startDate);
   const sameMonth = d.getFullYear() === year && d.getMonth() + 1 === month;
   const date = sameMonth
     ? inst.startDate
@@ -68,6 +78,7 @@ function installmentToEntry(inst: Installment, year: number, month: number, parc
     hasAttachment: false,
     received: true,
     isRecurring: false,
+    isCredit: true,
     categoryId: '',
     category: inst.category,
     parcelInfo: `${parcel}/${inst.totalParcels}`,
@@ -81,7 +92,7 @@ function groupByDate(txs: Transaction[]): { date: string; items: Transaction[] }
   const yesterday = new Date(now.getTime() - 86400000).toDateString();
 
   for (const tx of txs) {
-    const d = new Date(tx.date);
+    const d = parseLocalDate(tx.date);
     if (isNaN(d.getTime())) continue;
     let label: string;
     if (d.toDateString() === today) {
@@ -140,7 +151,7 @@ export default function ScreenSpend() {
   });
 
   const all = [...txs, ...installEntries].sort(
-    (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
+    (a, b) => parseLocalDate(b.date).getTime() - parseLocalDate(a.date).getTime()
   );
 
   const categories = Array.from(new Set(all.map(t => t.category.name)));
@@ -188,6 +199,7 @@ export default function ScreenSpend() {
       description: x.description,
       received: x.received,
       isRecurring: x.isRecurring,
+      isCredit: x.isCredit,
     });
   }
 
