@@ -12,7 +12,6 @@ async function claimLegacyData(targetUserId: string) {
 
   await prisma.$transaction([
     prisma.transaction.updateMany({   where: { userId: LEGACY_USER_ID }, data: { userId: targetUserId } }),
-    prisma.fixedExpense.updateMany({  where: { userId: LEGACY_USER_ID }, data: { userId: targetUserId } }),
     prisma.installment.updateMany({   where: { userId: LEGACY_USER_ID }, data: { userId: targetUserId } }),
     prisma.investment.updateMany({    where: { userId: LEGACY_USER_ID }, data: { userId: targetUserId } }),
     prisma.budget.updateMany({        where: { userId: LEGACY_USER_ID }, data: { userId: targetUserId } }),
