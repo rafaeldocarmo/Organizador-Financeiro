@@ -7,10 +7,12 @@ import TabBar from '@/components/ui/tab-bar';
 import TopBar from '@/components/ui/top-bar';
 import Glyph from '@/components/ui/glyph';
 import TransactionModal, { TransactionForEdit } from '@/components/ui/transaction-modal';
+import InstallmentModal, { InstallmentForEdit } from '@/components/ui/installment-modal';
 import { I } from '@/components/ui/icons';
 import { resolveIcon } from '@/data/categories';
 import { brl } from '@/lib/formatters';
 import { parcelNumber } from '@/lib/installments';
+import { bustCache } from '@/lib/use-fetch';
 
 // ─── types ────────────────────────────────────────────────────────────────────
 
@@ -27,16 +29,20 @@ interface Transaction {
   categoryId: string;
   category: { icon: string; color: string; name: string };
   parcelInfo?: string; // e.g. "3/12"
+  instId?: string;     // set on installment-derived entries
 }
 
 interface Installment {
   id: string;
   title: string;
+  store: string | null;
+  cardName: string | null;
   totalAmount: number;
   totalParcels: number;
   paidParcels: number;
   startDate: string;
   parcelValue: number;
+  categoryId: string;
   category: { icon: string; color: string; name: string };
 }
 
@@ -79,9 +85,10 @@ function installmentToEntry(inst: Installment, year: number, month: number, parc
     received: true,
     isRecurring: false,
     isCredit: true,
-    categoryId: '',
+    categoryId: inst.categoryId,
     category: inst.category,
     parcelInfo: `${parcel}/${inst.totalParcels}`,
+    instId: inst.id,
   };
 }
 
@@ -121,6 +128,8 @@ export default function ScreenSpend() {
   const [search, setSearch]         = useState('');
   const [modalOpen, setModalOpen]   = useState(false);
   const [editTx, setEditTx]         = useState<TransactionForEdit | null>(null);
+  const [editInst, setEditInst]     = useState<InstallmentForEdit | null>(null);
+  const [instTick, setInstTick]     = useState(0);
 
   useEffect(() => {
     fetch(`/api/transactions?type=EXPENSE&year=${year}&month=${month}&limit=100`)
@@ -134,7 +143,7 @@ export default function ScreenSpend() {
       .then(r => r.json())
       .then(data => { if (Array.isArray(data)) setInstall(data); })
       .catch(console.error);
-  }, []);
+  }, [instTick]);
 
   function shiftMonth(delta: number) {
     let m = month + delta;
@@ -186,6 +195,28 @@ export default function ScreenSpend() {
   function handleDelete(id: string) {
     setTxs(prev => prev.filter(t => t.id !== id));
     setEditTx(null);
+  }
+
+  /** Installment rows edit the whole purchase, not the single parcel. */
+  function openInstallmentEdit(instId: string) {
+    const inst = installments.find(i => i.id === instId);
+    if (!inst) return;
+    setEditInst({
+      id: inst.id,
+      title: inst.title,
+      store: inst.store,
+      cardName: inst.cardName,
+      totalAmount: inst.totalAmount,
+      totalParcels: inst.totalParcels,
+      startDate: inst.startDate,
+      categoryId: inst.categoryId,
+    });
+  }
+
+  function refreshInstallments() {
+    setEditInst(null);
+    bustCache('/api/');
+    setInstTick(t => t + 1);
   }
 
   function openEdit(x: Transaction) {
@@ -292,12 +323,12 @@ export default function ScreenSpend() {
             <Card pad={0} style={{ padding: '4px 16px' }}>
               {d.items.map((x, j) => (
                 <div key={x.id}
-                  onClick={() => { if (!x.parcelInfo) openEdit(x); }}
+                  onClick={() => { x.instId ? openInstallmentEdit(x.instId) : openEdit(x); }}
                   style={{
                     display: 'flex', alignItems: 'center', gap: 12,
                     padding: '12px 0',
                     borderBottom: j < d.items.length - 1 ? '1px solid var(--hairline)' : 'none',
-                    cursor: x.parcelInfo ? 'default' : 'pointer',
+                    cursor: 'pointer',
                   }}>
                   <Glyph icon={resolveIcon(x.category.icon)} color={x.category.color} />
                   <div style={{ flex: 1, minWidth: 0 }}>
@@ -341,6 +372,13 @@ export default function ScreenSpend() {
         initialData={editTx ?? undefined}
         onUpdate={handleUpdate}
         onDelete={handleDelete}
+      />
+      <InstallmentModal
+        open={!!editInst}
+        onClose={() => setEditInst(null)}
+        initialData={editInst ?? undefined}
+        onUpdate={refreshInstallments}
+        onDelete={refreshInstallments}
       />
     </>
   );

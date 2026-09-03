@@ -5,6 +5,7 @@ import Card from '@/components/ui/card';
 import Chip from '@/components/ui/chip';
 import TabBar from '@/components/ui/tab-bar';
 import TransactionModal from '@/components/ui/transaction-modal';
+import InstallmentModal, { InstallmentForEdit } from '@/components/ui/installment-modal';
 import TopBar from '@/components/ui/top-bar';
 import Glyph from '@/components/ui/glyph';
 import Pips from '@/components/charts/pips';
@@ -12,6 +13,7 @@ import { I } from '@/components/ui/icons';
 import { resolveIcon } from '@/data/categories';
 import { brl, brlShort } from '@/lib/formatters';
 import { parcelNumber } from '@/lib/installments';
+import { bustCache } from '@/lib/use-fetch';
 
 interface Installment {
   id: string;
@@ -25,6 +27,7 @@ interface Installment {
   parcelValue: number;
   remaining: number;
   remainingAmount: number;
+  categoryId: string;
   category: { icon: string; color: string; name: string };
 }
 
@@ -41,6 +44,7 @@ export default function ScreenInstall() {
   const [month, setMonth] = useState(now.getMonth() + 1);
   const [items, setItems] = useState<Installment[]>([]);
   const [addOpen, setAddOpen] = useState(false);
+  const [editInst, setEditInst] = useState<InstallmentForEdit | null>(null);
   const [tick, setTick] = useState(0);
 
   useEffect(() => {
@@ -70,6 +74,25 @@ export default function ScreenInstall() {
 
   const monthLabel = new Date(year, month - 1, 1).toLocaleString('pt-BR', { month: 'long', year: 'numeric' });
   const monthCap = monthLabel.charAt(0).toUpperCase() + monthLabel.slice(1);
+
+  function openEdit(x: Installment) {
+    setEditInst({
+      id: x.id,
+      title: x.title,
+      store: x.store,
+      cardName: x.cardName,
+      totalAmount: x.totalAmount,
+      totalParcels: x.totalParcels,
+      startDate: x.startDate,
+      categoryId: x.categoryId,
+    });
+  }
+
+  function refresh() {
+    setEditInst(null);
+    bustCache('/api/');
+    setTick(t => t + 1);
+  }
 
   return (
     <>
@@ -109,7 +132,7 @@ export default function ScreenInstall() {
           {active.map(({ inst: x, parcel }) => {
             const remainingValue = (x.totalParcels - parcel + 1) * x.parcelValue;
             return (
-              <Card key={x.id} pad={16}>
+              <Card key={x.id} pad={16} onClick={() => openEdit(x)} style={{ cursor: 'pointer' }}>
                 <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
                   <Glyph icon={resolveIcon(x.category.icon)} color={x.category.color} size={40} />
                   <div style={{ flex: 1, minWidth: 0 }}>
@@ -148,7 +171,14 @@ export default function ScreenInstall() {
         type="EXPENSE"
         open={addOpen}
         onClose={() => setAddOpen(false)}
-        onAdd={() => setTick(t => t + 1)}
+        onAdd={() => { bustCache('/api/'); setTick(t => t + 1); }}
+      />
+      <InstallmentModal
+        open={!!editInst}
+        onClose={() => setEditInst(null)}
+        initialData={editInst ?? undefined}
+        onUpdate={refresh}
+        onDelete={refresh}
       />
     </>
   );

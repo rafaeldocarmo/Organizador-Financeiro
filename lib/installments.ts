@@ -5,6 +5,21 @@
  * model: "o gasto acontece quando compro, não quando pago".
  */
 
+/**
+ * Adds the derived fields every screen reads off the API payload. Applied on
+ * create/update too, so a client can merge a response straight into its list.
+ */
+export function withParcelInfo<
+  T extends { totalAmount: number; totalParcels: number; paidParcels: number },
+>(i: T) {
+  return {
+    ...i,
+    parcelValue: i.totalAmount / i.totalParcels,
+    remaining: i.totalParcels - i.paidParcels,
+    remainingAmount: ((i.totalParcels - i.paidParcels) * i.totalAmount) / i.totalParcels,
+  };
+}
+
 /** Range of (year*12 + month) indices where the installment is visible. */
 export function displayRange(startMonthIdx: number, totalParcels: number): {
   start: number;

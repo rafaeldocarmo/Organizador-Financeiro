@@ -1,6 +1,7 @@
 import type { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getUserId, ok, err } from "@/lib/api";
+import { withParcelInfo } from "@/lib/installments";
 
 export async function GET(req: NextRequest) {
   try {
@@ -12,14 +13,7 @@ export async function GET(req: NextRequest) {
       orderBy: { startDate: "desc" },
     });
 
-    return ok(
-      installments.map((i) => ({
-        ...i,
-        parcelValue: i.totalAmount / i.totalParcels,
-        remaining: i.totalParcels - i.paidParcels,
-        remainingAmount: ((i.totalParcels - i.paidParcels) * i.totalAmount) / i.totalParcels,
-      }))
-    );
+    return ok(installments.map(withParcelInfo));
   } catch (e) {
     return err(e instanceof Error ? e.message : "Internal error", 500);
   }
@@ -50,7 +44,7 @@ export async function POST(req: NextRequest) {
       include: { category: true },
     });
 
-    return ok(installment, 201);
+    return ok(withParcelInfo(installment), 201);
   } catch (e) {
     return err(e instanceof Error ? e.message : "Internal error", 500);
   }
