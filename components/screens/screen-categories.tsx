@@ -1,9 +1,11 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { bustCache } from '@/lib/use-fetch';
 import Card from '@/components/ui/card';
 import TabBar from '@/components/ui/tab-bar';
 import TransactionModal from '@/components/ui/transaction-modal';
+import CategorySheet, { CategoryForSheet } from '@/components/ui/category-sheet';
 import TopBar from '@/components/ui/top-bar';
 import Sec from '@/components/ui/sec';
 import Glyph from '@/components/ui/glyph';
@@ -29,6 +31,8 @@ export default function ScreenCategories() {
   const [month, setMonth] = useState(now.getMonth() + 1);
   const [cats, setCats] = useState<CategoryItem[]>([]);
   const [addOpen, setAddOpen] = useState(false);
+  const [catSheet, setCatSheet] = useState<CategoryForSheet | null>(null);
+  const [tick, setTick] = useState(0);
 
   function shiftMonth(delta: number) {
     let m = month + delta;
@@ -43,7 +47,7 @@ export default function ScreenCategories() {
       .then(r => r.json())
       .then(data => { if (Array.isArray(data)) setCats(data); })
       .catch(console.error);
-  }, [year, month]);
+  }, [year, month, tick]);
 
   const totalSpent  = cats.reduce((s, c) => s + c.spent, 0);
   const totalBudget = cats.reduce((s, c) => s + c.budget, 0);
@@ -118,7 +122,9 @@ export default function ScreenCategories() {
         {cats.map((c) => {
           const pct = c.budget > 0 ? Math.min(100, (c.spent / c.budget) * 100) : 0;
           return (
-            <Card key={c.id} pad={14} style={{ display: 'flex', flexDirection: 'column', gap: 10, position: 'relative' }}>
+            <Card key={c.id} pad={14}
+              onClick={() => setCatSheet({ id: c.id, name: c.name, icon: c.icon, color: c.color })}
+              style={{ display: 'flex', flexDirection: 'column', gap: 10, position: 'relative', cursor: 'pointer' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                 <Glyph icon={resolveIcon(c.icon)} color={c.color} size={32} />
                 <span style={{ fontSize: 10.5, color: 'var(--muted)' }}><span className="num">{c.count}</span> itens</span>
@@ -148,6 +154,15 @@ export default function ScreenCategories() {
       <div style={{ height: 110 }} />
       <TabBar active="me" onFab={() => setAddOpen(true)} />
       <TransactionModal open={addOpen} onClose={() => setAddOpen(false)} />
+      <CategorySheet
+        open={catSheet !== null}
+        category={catSheet}
+        year={year}
+        month={month}
+        withInstallments={false}
+        onClose={() => setCatSheet(null)}
+        onChanged={() => { bustCache('/api/'); setTick(t => t + 1); }}
+      />
     </>
   );
 }

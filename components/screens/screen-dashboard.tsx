@@ -9,6 +9,7 @@ import Segments from '@/components/ui/segments';
 import TabBar from '@/components/ui/tab-bar';
 import TransactionModal from '@/components/ui/transaction-modal';
 import PaymentMethodSheet from '@/components/ui/payment-method-sheet';
+import CategorySheet, { CategoryForSheet } from '@/components/ui/category-sheet';
 import FixedExpensesPreview from '@/components/ui/fixed-expenses-preview';
 import InstallmentsPreview from '@/components/ui/installments-preview';
 import Spark from '@/components/charts/spark';
@@ -41,6 +42,7 @@ export default function ScreenDashboard() {
   const [mode, setMode]   = useState<'all' | 'variable'>('all');
   const [addOpen, setAddOpen] = useState(false);
   const [paymentSheet, setPaymentSheet] = useState<'debit' | 'credit' | null>(null);
+  const [catSheet, setCatSheet] = useState<CategoryForSheet | null>(null);
   const [tick, setTick] = useState(0);
 
   const modeParam = mode === 'variable' ? '&mode=variable' : '';
@@ -287,18 +289,20 @@ export default function ScreenDashboard() {
               {breakdown.map(b => {
                 const pct = breakdownTotal > 0 ? (b.total / breakdownTotal) * 100 : 0;
                 return (
-                  <div key={b.id} style={{
-                    display: 'flex', alignItems: 'center', gap: 10,
-                    padding: 10, borderRadius: 12,
-                    background: 'var(--surface-2)', border: '1px solid var(--hairline)',
-                  }}>
+                  <button key={b.id}
+                    onClick={() => setCatSheet({ id: b.id, name: b.name, icon: b.icon, color: b.color })}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 10,
+                      padding: 10, borderRadius: 12, textAlign: 'left', cursor: 'pointer',
+                      background: 'var(--surface-2)', border: '1px solid var(--hairline)',
+                    }}>
                     <Glyph icon={resolveIcon(b.icon)} color={b.color} size={32} />
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontSize: 12.5, fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{b.name}</div>
                       <div className="num" style={{ fontSize: 13, marginTop: 2, letterSpacing: '-0.01em' }}>{brl(b.total).replace('R$ ', 'R$ ')}</div>
                       <div style={{ fontSize: 10.5, color: 'var(--muted)', marginTop: 1 }}>{pct.toFixed(1)}%</div>
                     </div>
-                  </div>
+                  </button>
                 );
               })}
             </div>
@@ -332,6 +336,15 @@ export default function ScreenDashboard() {
         month={month}
         mode={mode}
         onClose={() => setPaymentSheet(null)}
+      />
+      <CategorySheet
+        open={catSheet !== null}
+        category={catSheet}
+        year={year}
+        month={month}
+        mode={mode}
+        onClose={() => setCatSheet(null)}
+        onChanged={() => { bustCache('/api/'); setTick(t => t + 1); }}
       />
     </>
   );
