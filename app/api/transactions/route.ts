@@ -2,7 +2,7 @@ import type { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getUserId, parseMonthParams, getOrCreateMonth, ok, err } from "@/lib/api";
 import { TransactionType } from "@/lib/generated/prisma";
-import { ensureCloneForMonth, nextMonth } from "@/lib/recurring";
+import { ensureClonesThrough, horizonMonth } from "@/lib/recurring";
 
 export async function GET(req: NextRequest) {
   try {
@@ -73,11 +73,11 @@ export async function POST(req: NextRequest) {
       include: { category: true },
     });
 
-    // Recurring template? Materialize next month's clone right away so the user
-    // sees it immediately when navigating forward. The daily cron extends further.
+    // Recurring template? Materialize the whole horizon right away so the user
+    // sees it when navigating forward. The daily cron keeps extending it.
     if (tx.isRecurring) {
-      const { year: ny, month: nm } = nextMonth(dy, dm);
-      try { await ensureCloneForMonth(tx, ny, nm); } catch (e) { console.error("clone failed:", e); }
+      const { year: hy, month: hm } = horizonMonth();
+      try { await ensureClonesThrough(tx, hy, hm); } catch (e) { console.error("clone failed:", e); }
     }
 
     return ok(tx, 201);

@@ -1,7 +1,7 @@
 import type { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getUserId, ok, err } from "@/lib/api";
-import { ensureCloneForMonth, nextMonth } from "@/lib/recurring";
+import { ensureClonesThrough, horizonMonth } from "@/lib/recurring";
 
 export async function PATCH(
   req: NextRequest,
@@ -33,11 +33,10 @@ export async function PATCH(
     });
 
     // If the toggle just flipped to recurring (or it's already recurring),
-    // ensure next month's clone exists. Idempotent.
+    // fill the horizon. Idempotent.
     if (updated.isRecurring && !updated.recurringTemplateId) {
-      const d = updated.date;
-      const { year: ny, month: nm } = nextMonth(d.getUTCFullYear(), d.getUTCMonth() + 1);
-      try { await ensureCloneForMonth(updated, ny, nm); } catch (e) { console.error("PATCH clone failed:", e); }
+      const { year: hy, month: hm } = horizonMonth();
+      try { await ensureClonesThrough(updated, hy, hm); } catch (e) { console.error("PATCH clone failed:", e); }
     }
 
     return ok(updated);
