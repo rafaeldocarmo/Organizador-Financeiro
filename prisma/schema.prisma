@@ -31,6 +31,9 @@ model User {
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
+  // Dia em que a fatura fecha (1–31). Define o ciclo usado na tela de projeção.
+  closingDay    Int?
+
   accounts Account[]
   sessions Session[]
 
@@ -40,6 +43,7 @@ model User {
   investments   Investment[]
   budgets       Budget[]
   months        Month[]
+  spendingCaps  SpendingCap[]
 }
 
 model Account {
@@ -197,6 +201,27 @@ model Budget {
   month   Month  @relation(fields: [monthId], references: [id])
 
   @@unique([userId, categoryId, monthId])
+}
+
+// Teto de gastos variáveis de um ciclo de fatura.
+// year/month identificam o mês em que o ciclo FECHA: o ciclo que fecha em
+// 25/out/2026 é { year: 2026, month: 10 }. Um teto por ciclo — ciclos sem
+// registro herdam o teto do ciclo anterior mais recente.
+model SpendingCap {
+  id        String   @id @default(cuid())
+  year      Int
+  month     Int
+  amount    Float
+  // Exceção de fechamento deste ciclo (o banco antecipa em fim de semana e
+  // feriado). Null = usa o dia padrão do usuário.
+  closingDay Int?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
+
+  @@unique([userId, year, month])
 }
 
 // Mês de referência — agrupa transações, pagamentos e orçamentos

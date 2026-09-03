@@ -225,7 +225,7 @@ export default function ScreenInvest() {
       </div>
 
       <div style={{ height: 110 }} />
-      <TabBar active="invest" onFab={() => setAddOpen(true)} />
+      <TabBar active="me" onFab={() => setAddOpen(true)} />
 
       <InvestmentModal
         open={addOpen}

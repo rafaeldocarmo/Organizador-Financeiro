@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { I } from '@/components/ui/icons';
 
-type TabId = 'home' | 'flow' | 'add' | 'invest' | 'me';
+type TabId = 'home' | 'flow' | 'add' | 'proj' | 'me';
 
 interface TabBarProps {
   active?: TabId;
@@ -14,7 +14,7 @@ const items = [
   { id: 'home'   as TabId, label: 'Início',   icon: I.home,   href: '/'           },
   { id: 'flow'   as TabId, label: 'Fluxo',    icon: I.flow,   href: '/spend'      },
   { id: 'add'    as TabId, label: '',          icon: I.plus,   href: null, fab: true },
-  { id: 'invest' as TabId, label: 'Investir', icon: I.invest, href: '/invest'     },
+  { id: 'proj'   as TabId, label: 'Projeção', icon: I.target, href: '/projection' },
   { id: 'me'     as TabId, label: 'Você',      icon: I.user,   href: '/you' },
 ];
 
