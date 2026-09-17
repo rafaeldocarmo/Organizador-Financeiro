@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import Link from 'next/link';
 import { signOut, useSession } from 'next-auth/react';
 import Logo from '@/components/ui/logo';
@@ -9,7 +9,8 @@ import Chip from '@/components/ui/chip';
 import TabBar from '@/components/ui/tab-bar';
 import TransactionModal from '@/components/ui/transaction-modal';
 import { I, IconProps } from '@/components/ui/icons';
-import { brl, brlShort } from '@/lib/formatters';
+import { brlShort } from '@/lib/formatters';
+import { clearLocalData, useFetch } from '@/lib/use-fetch';
 import React from 'react';
 
 interface DashboardData {
@@ -36,30 +37,20 @@ export default function ScreenYou() {
   const year = now.getFullYear();
   const month = now.getMonth() + 1;
 
-  const [income, setIncome]   = useState(0);
-  const [expense, setExpense] = useState(0);
-  const [debt, setDebt]       = useState(0);
-  const [invested, setInvested] = useState(0);
   const [addOpen, setAddOpen] = useState(false);
 
-  useEffect(() => {
-    fetch(`/api/dashboard?year=${year}&month=${month}`)
-      .then(r => r.json())
-      .then((d: DashboardData) => { if (d && !('error' in d)) { setIncome(d.income ?? 0); setExpense(d.expense ?? 0); } })
-      .catch(console.error);
+  // As três leituras passam pelo cache do useFetch, então as mesmas URLs já
+  // buscadas pelo dashboard e pela tela de parcelas são servidas na hora.
+  const { data: dash }   = useFetch<DashboardData>(`/api/dashboard?year=${year}&month=${month}`);
+  const { data: insts }  = useFetch<Installment[]>('/api/installments');
+  const { data: invest } = useFetch<InvestData>('/api/investments');
 
-    fetch('/api/installments')
-      .then(r => r.json())
-      .then((arr: Installment[]) => {
-        if (Array.isArray(arr)) setDebt(arr.reduce((s, x) => s + (x.remainingAmount ?? 0), 0));
-      })
-      .catch(console.error);
-
-    fetch('/api/investments')
-      .then(r => r.json())
-      .then((d: InvestData) => { if (d && !('error' in d)) setInvested(d.total ?? 0); })
-      .catch(console.error);
-  }, []);
+  const income   = dash?.income ?? 0;
+  const expense  = dash?.expense ?? 0;
+  const invested = invest?.total ?? 0;
+  const debt = Array.isArray(insts)
+    ? insts.reduce((s, x) => s + (x.remainingAmount ?? 0), 0)
+    : 0;
 
   const netWorth = invested - debt;
   const savings = income - expense;
@@ -195,7 +186,10 @@ export default function ScreenYou() {
       {/* Logout */}
       <div style={{ padding: '0 20px 16px' }}>
         <button
-          onClick={() => signOut({ callbackUrl: '/login' })}
+          onClick={async () => {
+            await clearLocalData();
+            signOut({ callbackUrl: '/login' });
+          }}
           style={{
             width: '100%', height: 48, borderRadius: 14, cursor: 'pointer',
             background: 'transparent', border: '1px solid var(--hairline)',

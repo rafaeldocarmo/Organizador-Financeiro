@@ -1,18 +1,20 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import Card from '@/components/ui/card';
 import Chip from '@/components/ui/chip';
 import TabBar from '@/components/ui/tab-bar';
 import TopBar from '@/components/ui/top-bar';
+import MonthNav from '@/components/ui/month-nav';
 import Glyph from '@/components/ui/glyph';
 import TransactionModal, { TransactionForEdit } from '@/components/ui/transaction-modal';
 import InstallmentModal, { InstallmentForEdit } from '@/components/ui/installment-modal';
 import { I } from '@/components/ui/icons';
 import { resolveIcon } from '@/data/categories';
 import { brl } from '@/lib/formatters';
-import { parcelNumber } from '@/lib/installments';
-import { bustCache } from '@/lib/use-fetch';
+import { parseLocalDate } from '@/lib/dates';
+import { entriesForMonth } from '@/lib/installments';
+import { bustCache, useFetch } from '@/lib/use-fetch';
 
 // ─── types ────────────────────────────────────────────────────────────────────
 
@@ -28,6 +30,8 @@ interface Transaction {
   isCredit: boolean;
   categoryId: string;
   category: { icon: string; color: string; name: string };
+  /** Fatura escolhida no crédito. */
+  month?: { year: number; month: number } | null;
   parcelInfo?: string; // e.g. "3/12"
   instId?: string;     // set on installment-derived entries
 }
@@ -47,24 +51,6 @@ interface Installment {
 }
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
-
-/**
- * Parse an ISO/YYYY-MM-DD string as a *local* Date.
- * Server stores dates as UTC midnight; `new Date(iso)` would shift them
- * one day back in negative-offset timezones (e.g. BRT). Take only the
- * YYYY-MM-DD portion and build a local Date.
- */
-function parseLocalDate(s: string): Date {
-  const [y, m, d] = s.slice(0, 10).split('-').map(Number);
-  return new Date(y, (m ?? 1) - 1, d ?? 1);
-}
-
-/** Returns the 1-based parcel number for month (year, month), or null if inactive. */
-function parcelInMonth(inst: Installment, year: number, month: number): number | null {
-  const start = parseLocalDate(inst.startDate);
-  const startIdx = start.getFullYear() * 12 + (start.getMonth() + 1);
-  return parcelNumber(startIdx, inst.totalParcels, year * 12 + month);
-}
 
 /** Map an active installment to a Transaction-shaped entry for the given month. */
 function installmentToEntry(inst: Installment, year: number, month: number, parcel: number): Transaction {
@@ -122,42 +108,33 @@ export default function ScreenSpend() {
   const [year, setYear]             = useState(now.getFullYear());
   const [month, setMonth]           = useState(now.getMonth() + 1);
 
-  const [txs, setTxs]               = useState<Transaction[]>([]);
-  const [installments, setInstall]  = useState<Installment[]>([]);
   const [filter, setFilter]         = useState('Tudo');
   const [search, setSearch]         = useState('');
   const [modalOpen, setModalOpen]   = useState(false);
   const [editTx, setEditTx]         = useState<TransactionForEdit | null>(null);
   const [editInst, setEditInst]     = useState<InstallmentForEdit | null>(null);
-  const [instTick, setInstTick]     = useState(0);
+  const [tick, setTick]             = useState(0);
 
-  useEffect(() => {
-    fetch(`/api/transactions?type=EXPENSE&year=${year}&month=${month}&limit=100`)
-      .then(r => r.json())
-      .then(data => { if (Array.isArray(data)) setTxs(data); })
-      .catch(console.error);
-  }, [year, month]);
+  const { data: txsRaw } = useFetch<Transaction[]>(
+    `/api/transactions?type=EXPENSE&year=${year}&month=${month}&limit=100`,
+    tick,
+  );
+  const { data: instRaw } = useFetch<Installment[]>('/api/installments', tick);
+  const txs = Array.isArray(txsRaw) ? txsRaw : [];
+  const installments = Array.isArray(instRaw) ? instRaw : [];
 
-  useEffect(() => {
-    fetch('/api/installments')
-      .then(r => r.json())
-      .then(data => { if (Array.isArray(data)) setInstall(data); })
-      .catch(console.error);
-  }, [instTick]);
-
-  function shiftMonth(delta: number) {
-    let m = month + delta;
-    let y = year;
-    if (m < 1) { m = 12; y -= 1; }
-    if (m > 12) { m = 1; y += 1; }
-    setYear(y); setMonth(m); setFilter('Tudo');
+  /** Depois de gravar, invalida o cache e refaz as duas leituras. */
+  function refresh() {
+    setEditTx(null);
+    setEditInst(null);
+    bustCache('/api/');
+    setTick(t => t + 1);
   }
 
+
   // Merge transactions + active installment entries for this month
-  const installEntries: Transaction[] = installments.flatMap(inst => {
-    const parcel = parcelInMonth(inst, year, month);
-    return parcel ? [installmentToEntry(inst, year, month, parcel)] : [];
-  });
+  const installEntries: Transaction[] = entriesForMonth(installments, year, month)
+    .map(({ installment, parcel }) => installmentToEntry(installment, year, month, parcel));
 
   const all = [...txs, ...installEntries].sort(
     (a, b) => parseLocalDate(b.date).getTime() - parseLocalDate(a.date).getTime()
@@ -175,28 +152,6 @@ export default function ScreenSpend() {
   const monthLabel = new Date(year, month - 1, 1).toLocaleString('pt-BR', { month: 'long', year: 'numeric' });
   const monthCap   = monthLabel.charAt(0).toUpperCase() + monthLabel.slice(1);
 
-  function handleAdd(data: unknown) {
-    const d = data as Record<string, unknown>;
-    if (typeof d.totalParcels === 'number') {
-      const inst = d as unknown as Installment;
-      const parcel = parcelInMonth(inst, year, month);
-      if (parcel) setInstall(prev => [...prev, inst]);
-    } else {
-      setTxs(prev => [data as Transaction, ...prev]);
-    }
-  }
-
-  function handleUpdate(data: unknown) {
-    const tx = data as Transaction;
-    setTxs(prev => prev.map(t => t.id === tx.id ? { ...t, ...tx } : t));
-    setEditTx(null);
-  }
-
-  function handleDelete(id: string) {
-    setTxs(prev => prev.filter(t => t.id !== id));
-    setEditTx(null);
-  }
-
   /** Installment rows edit the whole purchase, not the single parcel. */
   function openInstallmentEdit(instId: string) {
     const inst = installments.find(i => i.id === instId);
@@ -213,12 +168,6 @@ export default function ScreenSpend() {
     });
   }
 
-  function refreshInstallments() {
-    setEditInst(null);
-    bustCache('/api/');
-    setInstTick(t => t + 1);
-  }
-
   function openEdit(x: Transaction) {
     setEditTx({
       id: x.id,
@@ -231,6 +180,8 @@ export default function ScreenSpend() {
       received: x.received,
       isRecurring: x.isRecurring,
       isCredit: x.isCredit,
+      billingYear: x.month?.year ?? null,
+      billingMonth: x.month?.month ?? null,
     });
   }
 
@@ -238,35 +189,12 @@ export default function ScreenSpend() {
     <>
       <TopBar title="Gastos" />
 
-      <div style={{ padding: '0 20px 12px', display: 'flex', alignItems: 'center', gap: 6 }}>
-        <button
-          onClick={() => shiftMonth(-1)}
-          aria-label="Mês anterior"
-          style={{
-            width: 32, height: 32, borderRadius: 10, display: 'flex',
-            alignItems: 'center', justifyContent: 'center',
-            background: 'var(--surface)', border: '1px solid var(--hairline)',
-            color: 'var(--muted)',
-          }}
-        >
-          <I.chev s={14} sw={2} style={{ transform: 'rotate(180deg)' }} />
-        </button>
-        <div style={{ flex: 1, textAlign: 'center', fontSize: 13.5, fontWeight: 500, letterSpacing: '0.01em' }}>
-          {monthCap}
-        </div>
-        <button
-          onClick={() => shiftMonth(1)}
-          aria-label="Próximo mês"
-          style={{
-            width: 32, height: 32, borderRadius: 10, display: 'flex',
-            alignItems: 'center', justifyContent: 'center',
-            background: 'var(--surface)', border: '1px solid var(--hairline)',
-            color: 'var(--muted)',
-          }}
-        >
-          <I.chev s={14} sw={2} />
-        </button>
-      </div>
+      <MonthNav
+        year={year}
+        month={month}
+        label={monthCap}
+        onChange={(y, m) => { setYear(y); setMonth(m); setFilter('Tudo'); }}
+      />
 
       <div style={{ padding: '4px 20px 12px' }}>
         <div style={{
@@ -323,7 +251,7 @@ export default function ScreenSpend() {
             <Card pad={0} style={{ padding: '4px 16px' }}>
               {d.items.map((x, j) => (
                 <div key={x.id}
-                  onClick={() => { x.instId ? openInstallmentEdit(x.instId) : openEdit(x); }}
+                  onClick={() => { if (x.instId) openInstallmentEdit(x.instId); else openEdit(x); }}
                   style={{
                     display: 'flex', alignItems: 'center', gap: 12,
                     padding: '12px 0',
@@ -364,21 +292,21 @@ export default function ScreenSpend() {
         type="EXPENSE"
         open={modalOpen}
         onClose={() => setModalOpen(false)}
-        onAdd={handleAdd}
+        onAdd={refresh}
       />
       <TransactionModal
         open={!!editTx}
         onClose={() => setEditTx(null)}
         initialData={editTx ?? undefined}
-        onUpdate={handleUpdate}
-        onDelete={handleDelete}
+        onUpdate={refresh}
+        onDelete={refresh}
       />
       <InstallmentModal
         open={!!editInst}
         onClose={() => setEditInst(null)}
         initialData={editInst ?? undefined}
-        onUpdate={refreshInstallments}
-        onDelete={refreshInstallments}
+        onUpdate={refresh}
+        onDelete={refresh}
       />
     </>
   );

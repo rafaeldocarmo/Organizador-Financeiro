@@ -1,12 +1,13 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import Card from '@/components/ui/card';
 import TabBar from '@/components/ui/tab-bar';
 import TopBar from '@/components/ui/top-bar';
+import MonthNav from '@/components/ui/month-nav';
+import { bustCache, useFetch } from '@/lib/use-fetch';
 import Glyph from '@/components/ui/glyph';
 import TransactionModal, { TransactionForEdit } from '@/components/ui/transaction-modal';
-import { I } from '@/components/ui/icons';
 import { resolveIcon } from '@/data/categories';
 import { brl, brlShort } from '@/lib/formatters';
 
@@ -23,36 +24,28 @@ interface RecurringTx {
   type: 'EXPENSE' | 'INCOME';
   categoryId: string;
   category: { icon: string; color: string; name: string };
+  /** Fatura escolhida no crédito. */
+  month?: { year: number; month: number } | null;
 }
 
 export default function ScreenFixed() {
   const now = new Date();
   const [year, setYear]   = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth() + 1);
-  const [items, setItems] = useState<RecurringTx[]>([]);
   const [addOpen, setAddOpen] = useState(false);
   const [editItem, setEditItem] = useState<TransactionForEdit | null>(null);
   const [tick, setTick] = useState(0);
 
-  useEffect(() => {
-    fetch(`/api/transactions?type=EXPENSE&year=${year}&month=${month}&limit=200`)
-      .then(r => r.json())
-      .then((data: unknown) => {
-        if (!Array.isArray(data)) { setItems([]); return; }
-        const recurring = (data as RecurringTx[])
-          .filter(t => t.type === 'EXPENSE' && (t.isRecurring || t.recurringTemplateId != null));
-        setItems(recurring);
-      })
-      .catch(() => setItems([]));
-  }, [year, month, tick]);
+  // Mesma URL que o dashboard e a prévia de fixos usam, para reaproveitar o
+  // cache; o recorte de recorrentes é feito aqui.
+  const { data } = useFetch<RecurringTx[]>(
+    `/api/transactions?type=EXPENSE&year=${year}&month=${month}&limit=200`,
+    tick,
+  );
+  const items = Array.isArray(data)
+    ? data.filter(t => t.type === 'EXPENSE' && (t.isRecurring || t.recurringTemplateId != null))
+    : [];
 
-  function shiftMonth(delta: number) {
-    let m = month + delta;
-    let y = year;
-    if (m < 1) { m = 12; y -= 1; }
-    if (m > 12) { m = 1; y += 1; }
-    setYear(y); setMonth(m);
-  }
 
   function openEdit(tx: RecurringTx) {
     setEditItem({
@@ -66,6 +59,8 @@ export default function ScreenFixed() {
       received: tx.received,
       isRecurring: tx.isRecurring,
       isCredit: tx.isCredit,
+      billingYear: tx.month?.year ?? null,
+      billingMonth: tx.month?.month ?? null,
     });
   }
 
@@ -78,17 +73,12 @@ export default function ScreenFixed() {
     <>
       <TopBar title="Gastos fixos" />
 
-      <div style={{ padding: '0 20px 12px', display: 'flex', alignItems: 'center', gap: 6 }}>
-        <button onClick={() => shiftMonth(-1)} aria-label="Mês anterior" style={navBtnStyle}>
-          <I.chev s={14} sw={2} style={{ transform: 'rotate(180deg)' }} />
-        </button>
-        <div style={{ flex: 1, textAlign: 'center', fontSize: 13.5, fontWeight: 500, letterSpacing: '0.01em' }}>
-          {monthCap}
-        </div>
-        <button onClick={() => shiftMonth(1)} aria-label="Próximo mês" style={navBtnStyle}>
-          <I.chev s={14} sw={2} />
-        </button>
-      </div>
+      <MonthNav
+        year={year}
+        month={month}
+        label={monthCap}
+        onChange={(y, m) => { setYear(y); setMonth(m); }}
+      />
 
       <div style={{ padding: '4px 20px 12px' }}>
         <Card pad={18} style={{ background: 'linear-gradient(180deg, var(--surface) 0%, var(--bg-2) 100%)' }}>
@@ -151,22 +141,15 @@ export default function ScreenFixed() {
         type="EXPENSE"
         defaultRecurring
         onClose={() => setAddOpen(false)}
-        onAdd={() => setTick(t => t + 1)}
+        onAdd={() => { bustCache('/api/'); setTick(t => t + 1); }}
       />
       <TransactionModal
         open={!!editItem}
         onClose={() => setEditItem(null)}
         initialData={editItem ?? undefined}
-        onUpdate={() => { setEditItem(null); setTick(t => t + 1); }}
-        onDelete={() => { setEditItem(null); setTick(t => t + 1); }}
+        onUpdate={() => { setEditItem(null); bustCache('/api/'); setTick(t => t + 1); }}
+        onDelete={() => { setEditItem(null); bustCache('/api/'); setTick(t => t + 1); }}
       />
     </>
   );
 }
-
-const navBtnStyle: React.CSSProperties = {
-  width: 32, height: 32, borderRadius: 10, display: 'flex',
-  alignItems: 'center', justifyContent: 'center',
-  background: 'var(--surface)', border: '1px solid var(--hairline)',
-  color: 'var(--muted)',
-};

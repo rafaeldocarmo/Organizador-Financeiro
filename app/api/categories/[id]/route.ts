@@ -1,6 +1,6 @@
 import type { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getUserId, ok, err } from "@/lib/api";
+import { getUserId, ok, err, fail } from "@/lib/api";
 
 /**
  * System categories (userId = null) are shared rows: editing one changes it for
@@ -42,7 +42,7 @@ export async function PATCH(
 
     return ok(updated);
   } catch (e) {
-    return err(e instanceof Error ? e.message : "Internal error", 500);
+    return fail(e, "PATCH /api/categories/[id]");
   }
 }
 
@@ -82,6 +82,6 @@ export async function DELETE(
 
     return ok({ deleted: true });
   } catch (e) {
-    return err(e instanceof Error ? e.message : "Internal error", 500);
+    return fail(e, "DELETE /api/categories/[id]");
   }
 }

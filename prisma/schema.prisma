@@ -100,6 +100,7 @@ model Category {
   budgets       Budget[]
 
   @@unique([key, userId]) // slug único por usuário (null userId = sistema)
+  @@index([userId])
 }
 
 // Transações avulsas: receitas e despesas do dia a dia
@@ -132,6 +133,12 @@ model Transaction {
   recurringClones     Transaction[] @relation("RecurringClones")
 
   @@index([recurringTemplateId, monthId])
+  // Postgres não indexa chave estrangeira sozinho. Toda query do app filtra por
+  // userId + faixa de date; o dashboard ainda separa por type.
+  @@index([userId, date])
+  @@index([userId, type, date])
+  @@index([categoryId])
+  @@index([monthId])
 }
 
 // Compras parceladas: cartão, CDC, financiamento
@@ -154,6 +161,9 @@ model Installment {
   category   Category @relation(fields: [categoryId], references: [id])
 
   // Valor por parcela calculado na aplicação: totalAmount / totalParcels
+
+  @@index([userId, startDate])
+  @@index([categoryId])
 }
 
 // Aportes e posições de investimento
@@ -171,6 +181,8 @@ model Investment {
   user   User   @relation(fields: [userId], references: [id])
 
   history InvestmentSnapshot[]
+
+  @@index([userId])
 }
 
 // Histórico mensal de valor dos investimentos (para o gráfico de linha)
@@ -182,6 +194,8 @@ model InvestmentSnapshot {
 
   investmentId String
   investment   Investment @relation(fields: [investmentId], references: [id])
+
+  @@index([investmentId, recordedAt])
 }
 
 // Meta de orçamento por categoria, vinculada a um mês
@@ -201,6 +215,8 @@ model Budget {
   month   Month  @relation(fields: [monthId], references: [id])
 
   @@unique([userId, categoryId, monthId])
+  @@index([userId, monthId])
+  @@index([categoryId])
 }
 
 // Teto de gastos variáveis de um ciclo de fatura.

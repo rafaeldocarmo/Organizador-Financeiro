@@ -1,12 +1,13 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { bustCache } from '@/lib/use-fetch';
+import { useState } from 'react';
+import { bustCache, useFetch } from '@/lib/use-fetch';
 import Card from '@/components/ui/card';
 import TabBar from '@/components/ui/tab-bar';
 import TransactionModal from '@/components/ui/transaction-modal';
 import CategorySheet, { CategoryForSheet } from '@/components/ui/category-sheet';
 import TopBar from '@/components/ui/top-bar';
+import MonthNav from '@/components/ui/month-nav';
 import Sec from '@/components/ui/sec';
 import Glyph from '@/components/ui/glyph';
 import Donut from '@/components/charts/donut';
@@ -29,25 +30,16 @@ export default function ScreenCategories() {
   const now = new Date();
   const [year, setYear]   = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth() + 1);
-  const [cats, setCats] = useState<CategoryItem[]>([]);
   const [addOpen, setAddOpen] = useState(false);
   const [catSheet, setCatSheet] = useState<CategoryForSheet | null>(null);
   const [tick, setTick] = useState(0);
 
-  function shiftMonth(delta: number) {
-    let m = month + delta;
-    let y = year;
-    if (m < 1) { m = 12; y -= 1; }
-    if (m > 12) { m = 1; y += 1; }
-    setYear(y); setMonth(m);
-  }
 
-  useEffect(() => {
-    fetch(`/api/categories?year=${year}&month=${month}`)
-      .then(r => r.json())
-      .then(data => { if (Array.isArray(data)) setCats(data); })
-      .catch(console.error);
-  }, [year, month, tick]);
+  const { data } = useFetch<CategoryItem[]>(
+    `/api/categories?year=${year}&month=${month}`,
+    tick,
+  );
+  const cats = Array.isArray(data) ? data : [];
 
   const totalSpent  = cats.reduce((s, c) => s + c.spent, 0);
   const totalBudget = cats.reduce((s, c) => s + c.budget, 0);
@@ -62,28 +54,11 @@ export default function ScreenCategories() {
     <>
       <TopBar title="Categorias" />
 
-      <div style={{ padding: '0 20px 12px', display: 'flex', alignItems: 'center', gap: 6 }}>
-        <button onClick={() => shiftMonth(-1)} aria-label="Mês anterior" style={{
-          width: 32, height: 32, borderRadius: 10, display: 'flex',
-          alignItems: 'center', justifyContent: 'center',
-          background: 'var(--surface)', border: '1px solid var(--hairline)', color: 'var(--muted)',
-        }}>
-          <I.chev s={14} sw={2} style={{ transform: 'rotate(180deg)' }} />
-        </button>
-        <div style={{ flex: 1, textAlign: 'center', fontSize: 13.5, fontWeight: 500, letterSpacing: '0.01em' }}>
-          {(() => {
-            const m = new Date(year, month - 1, 1).toLocaleString('pt-BR', { month: 'long', year: 'numeric' });
-            return m.charAt(0).toUpperCase() + m.slice(1);
-          })()}
-        </div>
-        <button onClick={() => shiftMonth(1)} aria-label="Próximo mês" style={{
-          width: 32, height: 32, borderRadius: 10, display: 'flex',
-          alignItems: 'center', justifyContent: 'center',
-          background: 'var(--surface)', border: '1px solid var(--hairline)', color: 'var(--muted)',
-        }}>
-          <I.chev s={14} sw={2} />
-        </button>
-      </div>
+      <MonthNav
+        year={year}
+        month={month}
+        onChange={(y, m) => { setYear(y); setMonth(m); }}
+      />
 
       <div style={{ padding: '4px 20px 16px' }}>
         <Card pad={18}>

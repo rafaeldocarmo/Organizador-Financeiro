@@ -6,10 +6,23 @@ interface PageProps {
   searchParams: Promise<{ callbackUrl?: string }>;
 }
 
+/**
+ * Só aceita destino interno. `redirect()` manda o browser para qualquer string
+ * que receber, então um `?callbackUrl=https://…` cru viraria redirect aberto:
+ * o link sai do nosso domínio e entrega o usuário em outro.
+ * `//host` e `/\host` são protocol-relative — o browser os trata como externos.
+ */
+function safeCallback(url?: string): string {
+  if (!url || !url.startsWith("/")) return "/";
+  if (url.startsWith("//") || url.startsWith("/\\")) return "/";
+  return url;
+}
+
 export default async function LoginPage({ searchParams }: PageProps) {
   const session = await auth();
   const { callbackUrl } = await searchParams;
-  if (session?.user) redirect(callbackUrl || "/");
+  const callback = safeCallback(callbackUrl);
+  if (session?.user) redirect(callback);
 
   return (
     <div style={{
@@ -29,7 +42,7 @@ export default async function LoginPage({ searchParams }: PageProps) {
       <form
         action={async () => {
           "use server";
-          await signIn("google", { redirectTo: callbackUrl || "/" });
+          await signIn("google", { redirectTo: callback });
         }}
         style={{ width: "100%", maxWidth: 320 }}
       >

@@ -7,12 +7,12 @@ import TabBar from '@/components/ui/tab-bar';
 import TransactionModal from '@/components/ui/transaction-modal';
 import InstallmentModal, { InstallmentForEdit } from '@/components/ui/installment-modal';
 import TopBar from '@/components/ui/top-bar';
+import MonthNav from '@/components/ui/month-nav';
 import Glyph from '@/components/ui/glyph';
 import Pips from '@/components/charts/pips';
-import { I } from '@/components/ui/icons';
 import { resolveIcon } from '@/data/categories';
 import { brl, brlShort } from '@/lib/formatters';
-import { parcelNumber } from '@/lib/installments';
+import { parcelInMonth } from '@/lib/installments';
 import { bustCache } from '@/lib/use-fetch';
 
 interface Installment {
@@ -31,13 +31,6 @@ interface Installment {
   category: { icon: string; color: string; name: string };
 }
 
-/** 1-based parcel number for (year, month), or null if inactive that month. */
-function parcelInMonth(inst: Installment, year: number, month: number): number | null {
-  const start = new Date(inst.startDate);
-  const startIdx = start.getUTCFullYear() * 12 + (start.getUTCMonth() + 1);
-  return parcelNumber(startIdx, inst.totalParcels, year * 12 + month);
-}
-
 export default function ScreenInstall() {
   const now = new Date();
   const [year, setYear]   = useState(now.getFullYear());
@@ -54,13 +47,6 @@ export default function ScreenInstall() {
       .catch(console.error);
   }, [tick]);
 
-  function shiftMonth(delta: number) {
-    let m = month + delta;
-    let y = year;
-    if (m < 1) { m = 12; y -= 1; }
-    if (m > 12) { m = 1; y += 1; }
-    setYear(y); setMonth(m);
-  }
 
   // Active in selected month
   const active = items
@@ -98,17 +84,12 @@ export default function ScreenInstall() {
     <>
       <TopBar title="Parcelados" />
 
-      <div style={{ padding: '0 20px 12px', display: 'flex', alignItems: 'center', gap: 6 }}>
-        <button onClick={() => shiftMonth(-1)} aria-label="Mês anterior" style={navBtnStyle}>
-          <I.chev s={14} sw={2} style={{ transform: 'rotate(180deg)' }} />
-        </button>
-        <div style={{ flex: 1, textAlign: 'center', fontSize: 13.5, fontWeight: 500, letterSpacing: '0.01em' }}>
-          {monthCap}
-        </div>
-        <button onClick={() => shiftMonth(1)} aria-label="Próximo mês" style={navBtnStyle}>
-          <I.chev s={14} sw={2} />
-        </button>
-      </div>
+      <MonthNav
+        year={year}
+        month={month}
+        label={monthCap}
+        onChange={(y, m) => { setYear(y); setMonth(m); }}
+      />
 
       <div style={{ padding: '4px 20px 16px' }}>
         <div style={{ fontSize: 11.5, color: 'var(--muted)', letterSpacing: '0.1em', textTransform: 'uppercase' }}>
@@ -183,10 +164,3 @@ export default function ScreenInstall() {
     </>
   );
 }
-
-const navBtnStyle: React.CSSProperties = {
-  width: 32, height: 32, borderRadius: 10, display: 'flex',
-  alignItems: 'center', justifyContent: 'center',
-  background: 'var(--surface)', border: '1px solid var(--hairline)',
-  color: 'var(--muted)',
-};

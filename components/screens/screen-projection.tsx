@@ -11,7 +11,7 @@ import PaceChart from '@/components/charts/pace-chart';
 import Progress from '@/components/charts/progress';
 import { I } from '@/components/ui/icons';
 import { bustCache } from '@/lib/use-fetch';
-import { brl, brlShort } from '@/lib/formatters';
+import { brlShort } from '@/lib/formatters';
 
 // ─── types ────────────────────────────────────────────────────────────────────
 

@@ -1,6 +1,27 @@
 import { prisma } from "@/lib/prisma";
 import { getOrCreateMonth } from "@/lib/api";
+import { sameDayInMonth } from "@/lib/dates";
 import type { Transaction } from "@/lib/generated/prisma";
+
+/**
+ * Campos que um clone herda do template. `date` e `monthId` ficam de fora —
+ * são o que varia por mês.
+ */
+function cloneFields(template: Transaction) {
+  return {
+    userId: template.userId,
+    type: template.type,
+    title: template.title,
+    description: template.description,
+    amount: template.amount,
+    hasAttachment: false,
+    isCredit: template.isCredit,
+    received: template.received,
+    isRecurring: false, // clones are not templates themselves
+    categoryId: template.categoryId,
+    recurringTemplateId: template.id,
+  };
+}
 
 /**
  * Given a recurring template (Transaction with isRecurring=true and no
@@ -8,7 +29,7 @@ import type { Transaction } from "@/lib/generated/prisma";
  *
  * Idempotent: if a clone already exists for that template+month, returns it
  * unchanged with `created=false`. Otherwise creates one with the same fields
- * and date set to the same UTC day-of-month (clamped) in the target month.
+ * and the same day-of-month (encurtado em mês curto) no mês alvo.
  */
 export async function ensureCloneForMonth(
   template: Transaction,
@@ -25,28 +46,13 @@ export async function ensureCloneForMonth(
   });
   if (existing) return { clone: existing, created: false };
 
-  // Build target date in UTC so day-of-month is stable across server timezones.
-  const originDay = template.date.getUTCDate();
-  const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate();
-  const day = Math.min(originDay, lastDay);
-  const targetDate = new Date(Date.UTC(year, month - 1, day));
+  // Meia-noite LOCAL, igual ao que transactions/route.ts grava. Gravar em UTC
+  // aqui punha o clone do dia 1 três horas antes do início do mês calculado em
+  // meia-noite local — ele sumia do dashboard (DEB-2). Ver lib/dates.ts.
+  const targetDate = sameDayInMonth(template.date, year, month);
 
   const clone = await prisma.transaction.create({
-    data: {
-      userId: template.userId,
-      type: template.type,
-      title: template.title,
-      description: template.description,
-      amount: template.amount,
-      date: targetDate,
-      hasAttachment: false,
-      isCredit: template.isCredit,
-      received: template.received,
-      isRecurring: false, // clones are not templates themselves
-      categoryId: template.categoryId,
-      monthId: monthRec.id,
-      recurringTemplateId: template.id,
-    },
+    data: { ...cloneFields(template), date: targetDate, monthId: monthRec.id },
   });
   return { clone, created: true };
 }
@@ -72,7 +78,7 @@ export const RECURRING_HORIZON_MONTHS = 3;
  * template's own date.
  */
 export function horizonMonth(from: Date = new Date()): { year: number; month: number } {
-  return addMonths(from.getUTCFullYear(), from.getUTCMonth() + 1, RECURRING_HORIZON_MONTHS);
+  return addMonths(from.getFullYear(), from.getMonth() + 1, RECURRING_HORIZON_MONTHS);
 }
 
 /**
@@ -88,16 +94,51 @@ export async function ensureClonesThrough(
   if (!template.isRecurring || template.recurringTemplateId) return 0;
 
   const targetIdx = targetYear * 12 + targetMonth;
-  let { year, month } = nextMonth(
-    template.date.getUTCFullYear(),
-    template.date.getUTCMonth() + 1,
-  );
-
-  let created = 0;
-  while (year * 12 + month <= targetIdx) {
-    const result = await ensureCloneForMonth(template, year, month);
-    if (result?.created) created += 1;
-    ({ year, month } = nextMonth(year, month));
+  const months: { year: number; month: number }[] = [];
+  let cursor = nextMonth(template.date.getFullYear(), template.date.getMonth() + 1);
+  while (cursor.year * 12 + cursor.month <= targetIdx) {
+    months.push(cursor);
+    cursor = nextMonth(cursor.year, cursor.month);
   }
-  return created;
+  if (months.length === 0) return 0;
+
+  // Antes eram 3 queries por mês, em série: com 30 templates e horizonte de 3
+  // meses o cron fazia ~360 idas ao banco uma atrás da outra. Agora são três,
+  // e o que falta é decidido em memória.
+  const [existingMonths, existingClones] = await Promise.all([
+    prisma.month.findMany({
+      where: { userId: template.userId, OR: months },
+      select: { id: true, year: true, month: true },
+    }),
+    prisma.transaction.findMany({
+      where: { recurringTemplateId: template.id },
+      select: { monthId: true },
+    }),
+  ]);
+
+  const monthIdByKey = new Map(existingMonths.map(m => [`${m.year}-${m.month}`, m.id]));
+  const clonedMonthIds = new Set(existingClones.map(c => c.monthId));
+
+  const faltando = months.filter(m => {
+    const id = monthIdByKey.get(`${m.year}-${m.month}`);
+    return !id || !clonedMonthIds.has(id);
+  });
+  if (faltando.length === 0) return 0;
+
+  // Os meses que ainda não existem precisam ser criados antes do createMany.
+  const novos = faltando.filter(m => !monthIdByKey.has(`${m.year}-${m.month}`));
+  for (const m of novos) {
+    const rec = await getOrCreateMonth(template.userId, m.year, m.month);
+    monthIdByKey.set(`${m.year}-${m.month}`, rec.id);
+  }
+
+  const { count } = await prisma.transaction.createMany({
+    data: faltando.map(m => ({
+      ...cloneFields(template),
+      date: sameDayInMonth(template.date, m.year, m.month),
+      monthId: monthIdByKey.get(`${m.year}-${m.month}`)!,
+    })),
+    skipDuplicates: true,
+  });
+  return count;
 }

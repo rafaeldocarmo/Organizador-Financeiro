@@ -7,7 +7,7 @@ import Glyph from '@/components/ui/glyph';
 import Pips from '@/components/charts/pips';
 import { I } from '@/components/ui/icons';
 import { resolveIcon } from '@/data/categories';
-import { displayRange, parcelNumber } from '@/lib/installments';
+import { entriesForMonth, parcelInMonth } from '@/lib/installments';
 
 interface Installment {
   id: string;
@@ -28,12 +28,12 @@ function fmt(n: number, decimals = 2) {
 
 /** Returns how many parcels have already been "paid" (displayed) up to this month. */
 function elapsedParcels(inst: Installment, year: number, month: number): number {
+  const parcel = parcelInMonth(inst, year, month);
+  if (parcel !== null) return parcel - 1;
+  // Fora da faixa: ou ainda não começou, ou já terminou.
   const start = new Date(inst.startDate);
   const startIdx = start.getUTCFullYear() * 12 + (start.getUTCMonth() + 1);
-  const curIdx = year * 12 + month;
-  const parcel = parcelNumber(startIdx, inst.totalParcels, curIdx);
-  if (parcel === null) return curIdx < startIdx - 1 ? 0 : inst.totalParcels;
-  return parcel - 1;
+  return year * 12 + month < startIdx - 1 ? 0 : inst.totalParcels;
 }
 
 interface PreviewProps {
@@ -52,13 +52,7 @@ export default function InstallmentsPreview({ year: yearProp, month: monthProp }
   if (!items) return null;
 
   // Active = current month is in the display range (one month before fatura).
-  const active = items.filter(inst => {
-    const start = new Date(inst.startDate);
-    const startIdx = start.getUTCFullYear() * 12 + (start.getUTCMonth() + 1);
-    const curIdx = year * 12 + month;
-    const { start: dispStart, end: dispEnd } = displayRange(startIdx, inst.totalParcels);
-    return curIdx >= dispStart && curIdx <= dispEnd;
-  });
+  const active = entriesForMonth(items, year, month).map(e => e.installment);
 
   if (active.length === 0) return null;
 

@@ -6,6 +6,10 @@ import { ensureClonesThrough, horizonMonth, RECURRING_HORIZON_MONTHS } from "@/l
 // Idempotent. For each recurring template, fills every missing clone from the
 // month AFTER the template's own date through the horizon — no gaps, even if
 // the cron skipped runs or the template is months old.
+// O trabalho cresce com o número de templates; o padrão de 10s da Vercel
+// aperta rápido.
+export const maxDuration = 60;
+
 export async function GET(req: NextRequest) {
   const auth = req.headers.get("authorization");
   if (auth !== `Bearer ${process.env.CRON_SECRET}`) {

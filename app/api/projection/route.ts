@@ -1,6 +1,7 @@
 import type { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getUserId, ok, err } from "@/lib/api";
+import { getUserId, ok, err, fail } from "@/lib/api";
+import { dailySeries, variableExpensesInCycleWhere } from "@/lib/projection";
 import {
   clampClosingDay,
   closingDayResolver,
@@ -94,13 +95,8 @@ async function buildProjection(
 
   const [expenses, cap] = await Promise.all([
     prisma.transaction.findMany({
-      where: {
-        userId,
-        type: "EXPENSE",
-        date: { gte: cycle.start, lt: cycle.endExclusive },
-        isRecurring: false,
-        recurringTemplateId: null,
-      },
+      // Crédito entra pela fatura escolhida, débito pela data — ver lib/projection.ts.
+      where: variableExpensesInCycleWhere(userId, cycle),
       select: { amount: true, date: true },
       orderBy: { date: "asc" },
     }),
@@ -111,17 +107,7 @@ async function buildProjection(
 
   // Acumulado por dia do ciclo, do dia 1 até hoje (ou até o fim, se já fechou).
   const daysToPlot = Math.max(progress.elapsed, 0);
-  const perDayTotals = new Array<number>(daysToPlot).fill(0);
-  for (const t of expenses) {
-    const d = new Date(t.date.getFullYear(), t.date.getMonth(), t.date.getDate());
-    const idx = Math.round((d.getTime() - cycle.start.getTime()) / 86_400_000);
-    if (idx >= 0 && idx < daysToPlot) perDayTotals[idx] += t.amount;
-  }
-  let running = 0;
-  const series = perDayTotals.map((v, i) => {
-    running += v;
-    return { day: i + 1, spent: v, cumulative: running };
-  });
+  const series = dailySeries(expenses, cycle.start, daysToPlot);
 
   const capAmount = cap.amount;
   const remaining = capAmount === null ? null : capAmount - spent;
@@ -188,7 +174,7 @@ export async function GET(req: NextRequest) {
 
     return ok(await buildProjection(userId, user.closingDay, year, month));
   } catch (e) {
-    return err(e instanceof Error ? e.message : "Internal error", 500);
+    return fail(e, "GET /api/projection");
   }
 }
 
@@ -264,6 +250,6 @@ export async function PUT(req: NextRequest) {
 
     return ok(await buildProjection(userId, defaultClosingDay, target.year, target.month));
   } catch (e) {
-    return err(e instanceof Error ? e.message : "Internal error", 500);
+    return fail(e, "PUT /api/projection");
   }
 }

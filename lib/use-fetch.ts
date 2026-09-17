@@ -17,6 +17,27 @@ const CACHE = new Map<string, Entry<unknown>>();
 const INFLIGHT = new Map<string, Promise<unknown>>();
 const STALE_MS = 30_000; // serve cached without revalidate if newer than this
 
+/**
+ * Apaga todo rastro local da sessão: o cache em memória do useFetch e os caches
+ * do service worker.
+ *
+ * O SW guarda as navegações em RUNTIME_CACHE, e as páginas são renderizadas
+ * para um usuário logado. Sem esta limpeza, o cache sobrevive ao logout e as
+ * telas antigas voltam a ser servidas offline — dados financeiros legíveis
+ * depois de sair da conta, num aparelho compartilhado.
+ */
+export async function clearLocalData() {
+  CACHE.clear();
+  INFLIGHT.clear();
+  if (typeof window === 'undefined' || !('caches' in window)) return;
+  try {
+    const keys = await caches.keys();
+    await Promise.all(keys.map(k => caches.delete(k)));
+  } catch {
+    // Modo privado ou site data bloqueado: não há cache para limpar.
+  }
+}
+
 export function bustCache(prefix?: string) {
   if (!prefix) { CACHE.clear(); INFLIGHT.clear(); return; }
   for (const k of CACHE.keys()) if (k.startsWith(prefix)) CACHE.delete(k);
@@ -27,7 +48,13 @@ async function doFetch<T>(url: string): Promise<T> {
   const existing = INFLIGHT.get(url);
   if (existing) return existing as Promise<T>;
   const p = fetch(url)
-    .then(r => r.json())
+    .then(async r => {
+      // Sem esta checagem, um 500 devolve { error: "…" } e o objeto de erro era
+      // guardado no CACHE como se fosse dado válido — e servido por 30s a todo
+      // consumidor daquela URL.
+      if (!r.ok) throw new Error(`${r.status} ${url}`);
+      return r.json();
+    })
     .then(data => {
       CACHE.set(url, { data, ts: Date.now() });
       INFLIGHT.delete(url);

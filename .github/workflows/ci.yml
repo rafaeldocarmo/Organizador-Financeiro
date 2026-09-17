@@ -1,0 +1,39 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      # `npm ci` dispara o postinstall (prisma generate), que precisa de uma
+      # DATABASE_URL sintaticamente válida — nunca conecta de fato.
+      - run: npm ci
+        env:
+          DATABASE_URL: postgresql://ci:ci@localhost:5432/ci
+
+      - name: Typecheck
+        run: npx tsc --noEmit
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Testes
+        run: npm test
+
+      # Roda com fuso não-UTC de propósito: é assim que as regressões de data
+      # aparecem (ver DEB-2 — servidor em UTC mascara o problema).
+      - name: Testes em America/Sao_Paulo
+        run: npm test
+        env:
+          TZ: America/Sao_Paulo

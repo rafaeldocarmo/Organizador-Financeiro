@@ -1,8 +1,8 @@
 import type { NextRequest } from "next/server";
 import { Prisma } from "@/lib/generated/prisma";
 import { prisma } from "@/lib/prisma";
-import { getUserId, parseMonthParams, ok, err } from "@/lib/api";
-import { displayRange } from "@/lib/installments";
+import { getUserId, parseMonthParams, ok, fail } from "@/lib/api";
+import { entriesForMonth } from "@/lib/installments";
 
 export async function GET(req: NextRequest) {
   try {
@@ -95,16 +95,10 @@ export async function GET(req: NextRequest) {
       ),
     ]);
 
-    const curIdx = year * 12 + month;
     // Variable mode excludes installments entirely from the totals/breakdown/trend.
     const activeInstallments = variable
       ? []
-      : installments.filter(i => {
-          const start = new Date(i.startDate);
-          const startIdx = start.getUTCFullYear() * 12 + (start.getUTCMonth() + 1);
-          const { start: dispStart, end: dispEnd } = displayRange(startIdx, i.totalParcels);
-          return curIdx >= dispStart && curIdx <= dispEnd;
-        });
+      : entriesForMonth(installments, year, month).map(e => e.installment);
     const installmentFatura = activeInstallments.reduce(
       (acc, i) => acc + i.totalAmount / i.totalParcels,
       0,
@@ -134,17 +128,10 @@ export async function GET(req: NextRequest) {
     const trend = monthSlots.map(s => {
       const ym = `${s.y}-${s.m}`;
       const expense = expenseByYM.get(ym) ?? 0;
-      const slotIdx = s.y * 12 + s.m;
       const inst = variable
         ? 0
-        : installments
-            .filter(it => {
-              const start = new Date(it.startDate);
-              const startIdx = start.getUTCFullYear() * 12 + (start.getUTCMonth() + 1);
-              const { start: dispStart, end: dispEnd } = displayRange(startIdx, it.totalParcels);
-              return slotIdx >= dispStart && slotIdx <= dispEnd;
-            })
-            .reduce((acc, it) => acc + it.totalAmount / it.totalParcels, 0);
+        : entriesForMonth(installments, s.y, s.m)
+            .reduce((acc, e) => acc + e.installment.totalAmount / e.installment.totalParcels, 0);
       return { label: s.label, v: expense + inst };
     });
 
@@ -160,6 +147,6 @@ export async function GET(req: NextRequest) {
       trend,
     });
   } catch (e) {
-    return err(e instanceof Error ? e.message : "Internal error", 500);
+    return fail(e, "GET /api/dashboard");
   }
 }

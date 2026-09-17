@@ -42,3 +42,43 @@ export function parcelNumber(
   if (curMonthIdx < start || curMonthIdx > end) return null;
   return curMonthIdx - start + 1;
 }
+
+/** O mínimo que uma parcela precisa para ser posicionada num mês. */
+export interface InstallmentLike {
+  startDate: string | Date;
+  totalParcels: number;
+}
+
+/**
+ * `startDate` é gravada em meia-noite UTC (ver a exceção em lib/dates.ts), e o
+ * único uso dela é extrair ano/mês — por isso os getters UTC.
+ */
+function startMonthIdxOf(i: InstallmentLike): number {
+  const d = i.startDate instanceof Date ? i.startDate : new Date(i.startDate);
+  return d.getUTCFullYear() * 12 + (d.getUTCMonth() + 1);
+}
+
+/** Nº da parcela ativa em (year, month), ou null. */
+export function parcelInMonth(i: InstallmentLike, year: number, month: number): number | null {
+  return parcelNumber(startMonthIdxOf(i), i.totalParcels, year * 12 + month);
+}
+
+/**
+ * Filtra as parcelas ativas no mês, já com o número de cada uma.
+ *
+ * Existe porque este cálculo estava reimplementado em quatro lugares — o
+ * dashboard, a tela de gastos, o sheet de categoria e o de forma de pagamento —
+ * cada um com sua própria extração de ano/mês da startDate.
+ */
+export function entriesForMonth<T extends InstallmentLike>(
+  installments: readonly T[],
+  year: number,
+  month: number,
+): { installment: T; parcel: number }[] {
+  const out: { installment: T; parcel: number }[] = [];
+  for (const installment of installments) {
+    const parcel = parcelInMonth(installment, year, month);
+    if (parcel !== null) out.push({ installment, parcel });
+  }
+  return out;
+}

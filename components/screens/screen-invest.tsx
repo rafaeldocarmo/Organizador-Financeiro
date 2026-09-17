@@ -1,16 +1,17 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import Card from '@/components/ui/card';
 import Chip from '@/components/ui/chip';
 import TabBar from '@/components/ui/tab-bar';
 import InvestmentModal, { InvestmentForEdit } from '@/components/ui/investment-modal';
 import TopBar from '@/components/ui/top-bar';
+import MonthNav from '@/components/ui/month-nav';
 import Sec from '@/components/ui/sec';
 import Segments from '@/components/ui/segments';
 import LineChart from '@/components/charts/line-chart';
-import { I } from '@/components/ui/icons';
 import { brl, brlShort } from '@/lib/formatters';
+import { useFetch } from '@/lib/use-fetch';
 
 interface Holding {
   id: string;
@@ -50,27 +51,12 @@ export default function ScreenInvest() {
   const now = new Date();
   const [year, setYear]   = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth() + 1);
-  const [data, setData] = useState<InvestData | null>(null);
   const [period, setPeriod] = useState('1y');
   const [addOpen, setAddOpen] = useState(false);
   const [editInv, setEditInv] = useState<InvestmentForEdit | null>(null);
   const [tick, setTick] = useState(0);
 
-  useEffect(() => {
-    setData(null);
-    fetch(`/api/investments?year=${year}&month=${month}`)
-      .then(r => r.json())
-      .then(data => { if (!data?.error) setData(data); })
-      .catch(console.error);
-  }, [tick, year, month]);
-
-  function shiftMonth(delta: number) {
-    let m = month + delta;
-    let y = year;
-    if (m < 1) { m = 12; y -= 1; }
-    if (m > 12) { m = 1; y += 1; }
-    setYear(y); setMonth(m);
-  }
+  const { data } = useFetch<InvestData>(`/api/investments?year=${year}&month=${month}`, tick);
 
   const total = data?.total ?? 0;
   const holdings = data?.holdings ?? [];
@@ -114,35 +100,12 @@ export default function ScreenInvest() {
     <>
       <TopBar title="Investimentos" />
 
-      <div style={{ padding: '0 20px 12px', display: 'flex', alignItems: 'center', gap: 6 }}>
-        <button
-          onClick={() => shiftMonth(-1)}
-          aria-label="Mês anterior"
-          style={{
-            width: 32, height: 32, borderRadius: 10, display: 'flex',
-            alignItems: 'center', justifyContent: 'center',
-            background: 'var(--surface)', border: '1px solid var(--hairline)',
-            color: 'var(--muted)',
-          }}
-        >
-          <I.chev s={14} sw={2} style={{ transform: 'rotate(180deg)' }} />
-        </button>
-        <div style={{ flex: 1, textAlign: 'center', fontSize: 13.5, fontWeight: 500, letterSpacing: '0.01em' }}>
-          {monthCap}
-        </div>
-        <button
-          onClick={() => shiftMonth(1)}
-          aria-label="Próximo mês"
-          style={{
-            width: 32, height: 32, borderRadius: 10, display: 'flex',
-            alignItems: 'center', justifyContent: 'center',
-            background: 'var(--surface)', border: '1px solid var(--hairline)',
-            color: 'var(--muted)',
-          }}
-        >
-          <I.chev s={14} sw={2} />
-        </button>
-      </div>
+      <MonthNav
+        year={year}
+        month={month}
+        label={monthCap}
+        onChange={(y, m) => { setYear(y); setMonth(m); }}
+      />
 
       <div style={{ padding: '4px 20px 16px' }}>
         <div style={{ fontSize: 11.5, color: 'var(--muted)', letterSpacing: '0.1em', textTransform: 'uppercase' }}>

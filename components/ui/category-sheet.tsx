@@ -7,7 +7,8 @@ import CategoryModal, { CategoryForEdit } from '@/components/ui/category-modal';
 import { I } from '@/components/ui/icons';
 import { resolveIcon } from '@/data/categories';
 import { brl, brlShort } from '@/lib/formatters';
-import { parcelNumber } from '@/lib/installments';
+import { parseLocalDate } from '@/lib/dates';
+import { entriesForMonth } from '@/lib/installments';
 
 interface Transaction {
   id: string;
@@ -53,11 +54,6 @@ interface Props {
   onClose: () => void;
   /** Called after the category itself is renamed, restyled or deleted. */
   onChanged?: () => void;
-}
-
-function parseLocalDate(s: string): Date {
-  const [y, m, d] = s.slice(0, 10).split('-').map(Number);
-  return new Date(y, (m ?? 1) - 1, d ?? 1);
 }
 
 function dayLabel(d: Date): string {
@@ -113,12 +109,8 @@ export default function CategorySheet({
   }
 
   if (withInstallments && mode !== 'variable' && Array.isArray(insts)) {
-    for (const i of insts) {
-      if (i.categoryId !== category.id) continue;
-      const start = parseLocalDate(i.startDate);
-      const startIdx = start.getFullYear() * 12 + (start.getMonth() + 1);
-      const parcel = parcelNumber(startIdx, i.totalParcels, year * 12 + month);
-      if (parcel === null) continue;
+    const doMes = entriesForMonth(insts.filter(i => i.categoryId === category.id), year, month);
+    for (const { installment: i, parcel } of doMes) {
       rows.push({
         id: `inst-${i.id}-${parcel}`,
         title: i.title,

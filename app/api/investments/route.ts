@@ -1,6 +1,9 @@
 import type { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getUserId, ok, err } from "@/lib/api";
+import { ApiError, getUserId, ok, fail, positiveAmount, requiredString } from "@/lib/api";
+import { InvestmentType } from "@/lib/generated/prisma";
+
+const TYPES: readonly string[] = ["FIXED_INCOME", "VARIABLE_INCOME", "CRYPTO"];
 
 export async function GET(req: NextRequest) {
   try {
@@ -50,7 +53,7 @@ export async function GET(req: NextRequest) {
 
     return ok({ total: totalAmount, holdings: result, scopedToMonth });
   } catch (e) {
-    return err(e instanceof Error ? e.message : "Internal error", 500);
+    return fail(e, "GET /api/investments");
   }
 }
 
@@ -58,19 +61,24 @@ export async function POST(req: NextRequest) {
   try {
     const userId = await getUserId(req);
     const body = await req.json();
-    const { title, type, amount, returnPct } = body;
+    const { type, returnPct } = body;
 
-    if (!title || !type || amount === undefined) {
-      return err("title, type, amount are required");
+    const title = requiredString(body.title, "title", 200);
+    const amount = positiveAmount(body.amount);
+    if (!TYPES.includes(type)) {
+      throw new ApiError("type deve ser FIXED_INCOME, VARIABLE_INCOME ou CRYPTO");
     }
+    // returnPct pode ser negativo (prejuízo), só precisa ser um número.
+    const pct = returnPct === undefined ? 0 : Number(returnPct);
+    if (!Number.isFinite(pct)) throw new ApiError("returnPct deve ser um número");
 
     const investment = await prisma.investment.create({
       data: {
         userId,
         title,
-        type,
-        amount: Number(amount),
-        returnPct: Number(returnPct ?? 0),
+        type: type as InvestmentType,
+        amount,
+        returnPct: pct,
         portfolioPct: 0, // recalculated on GET
       },
     });
@@ -86,6 +94,6 @@ export async function POST(req: NextRequest) {
 
     return ok(investment, 201);
   } catch (e) {
-    return err(e instanceof Error ? e.message : "Internal error", 500);
+    return fail(e, "POST /api/investments");
   }
 }

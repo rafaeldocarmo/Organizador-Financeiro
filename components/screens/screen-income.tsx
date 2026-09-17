@@ -1,17 +1,18 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import Card from '@/components/ui/card';
 import Chip from '@/components/ui/chip';
 import TabBar from '@/components/ui/tab-bar';
 import TopBar from '@/components/ui/top-bar';
+import MonthNav from '@/components/ui/month-nav';
 import Sec from '@/components/ui/sec';
 import Glyph from '@/components/ui/glyph';
 import Progress from '@/components/charts/progress';
 import TransactionModal, { TransactionForEdit } from '@/components/ui/transaction-modal';
-import { I } from '@/components/ui/icons';
 import { resolveIcon } from '@/data/categories';
 import { brl, brlShort } from '@/lib/formatters';
+import { bustCache, useFetch } from '@/lib/use-fetch';
 
 interface IncomeItem {
   id: string;
@@ -61,17 +62,23 @@ export default function ScreenIncome() {
   const now = new Date();
   const [year, setYear]   = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth() + 1);
-  const [items, setItems] = useState<IncomeItem[]>([]);
   const [modalOpen, setModalOpen] = useState(false);
   const [editTx, setEditTx] = useState<TransactionForEdit | null>(null);
+  const [tick, setTick] = useState(0);
 
-  function shiftMonth(delta: number) {
-    let m = month + delta;
-    let y = year;
-    if (m < 1) { m = 12; y -= 1; }
-    if (m > 12) { m = 1; y += 1; }
-    setYear(y); setMonth(m);
+  const { data: raw } = useFetch<IncomeItem[]>(
+    `/api/transactions?type=INCOME&year=${year}&month=${month}&limit=100`,
+    tick,
+  );
+  const items = Array.isArray(raw) ? raw : [];
+
+  /** Depois de gravar, invalida o cache e refaz a leitura. */
+  function refresh() {
+    setEditTx(null);
+    bustCache('/api/');
+    setTick(t => t + 1);
   }
+
 
   function openEdit(x: IncomeItem) {
     setEditTx({
@@ -88,23 +95,7 @@ export default function ScreenIncome() {
     });
   }
 
-  function handleUpdate(data: unknown) {
-    const tx = data as IncomeItem;
-    setItems(prev => prev.map(t => t.id === tx.id ? { ...t, ...tx } : t));
-    setEditTx(null);
-  }
 
-  function handleDelete(id: string) {
-    setItems(prev => prev.filter(t => t.id !== id));
-    setEditTx(null);
-  }
-
-  useEffect(() => {
-    fetch(`/api/transactions?type=INCOME&year=${year}&month=${month}&limit=100`)
-      .then(r => r.json())
-      .then(data => { if (Array.isArray(data)) setItems(data); })
-      .catch(console.error);
-  }, [year, month]);
 
   const monthLabel = new Date(year, month - 1, 1).toLocaleString('pt-BR', { month: 'long', year: 'numeric' });
   const monthCap = monthLabel.charAt(0).toUpperCase() + monthLabel.slice(1);
@@ -120,25 +111,12 @@ export default function ScreenIncome() {
     <>
       <TopBar title="Recebimentos" />
 
-      <div style={{ padding: '0 20px 12px', display: 'flex', alignItems: 'center', gap: 6 }}>
-        <button onClick={() => shiftMonth(-1)} aria-label="Mês anterior" style={{
-          width: 32, height: 32, borderRadius: 10, display: 'flex',
-          alignItems: 'center', justifyContent: 'center',
-          background: 'var(--surface)', border: '1px solid var(--hairline)', color: 'var(--muted)',
-        }}>
-          <I.chev s={14} sw={2} style={{ transform: 'rotate(180deg)' }} />
-        </button>
-        <div style={{ flex: 1, textAlign: 'center', fontSize: 13.5, fontWeight: 500, letterSpacing: '0.01em' }}>
-          {monthCap}
-        </div>
-        <button onClick={() => shiftMonth(1)} aria-label="Próximo mês" style={{
-          width: 32, height: 32, borderRadius: 10, display: 'flex',
-          alignItems: 'center', justifyContent: 'center',
-          background: 'var(--surface)', border: '1px solid var(--hairline)', color: 'var(--muted)',
-        }}>
-          <I.chev s={14} sw={2} />
-        </button>
-      </div>
+      <MonthNav
+        year={year}
+        month={month}
+        label={monthCap}
+        onChange={(y, m) => { setYear(y); setMonth(m); }}
+      />
 
       <div style={{ padding: '4px 20px 16px' }}>
         <div style={{ fontSize: 11.5, color: 'var(--muted)', letterSpacing: '0.1em', textTransform: 'uppercase' }}>
@@ -203,14 +181,14 @@ export default function ScreenIncome() {
         type="INCOME"
         open={modalOpen}
         onClose={() => setModalOpen(false)}
-        onAdd={tx => setItems(prev => [tx as IncomeItem, ...prev])}
+        onAdd={refresh}
       />
       <TransactionModal
         open={!!editTx}
         onClose={() => setEditTx(null)}
         initialData={editTx ?? undefined}
-        onUpdate={handleUpdate}
-        onDelete={handleDelete}
+        onUpdate={refresh}
+        onDelete={refresh}
       />
     </>
   );

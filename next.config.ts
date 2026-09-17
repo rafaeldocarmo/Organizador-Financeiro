@@ -1,11 +1,14 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  // Disable streaming metadata. Without this, Next 16 may insert
-  // <div hidden> placeholders for metadata that get streamed after
-  // the initial shell, which on dev/HMR can collide with whitespace
-  // and trigger "Hydration failed" + DOM removeChild errors.
-  htmlLimitedBots: /.*/,
+  // Desliga o streaming de metadata: sem isso o Next 16 insere placeholders
+  // <div hidden> que chegam depois do shell inicial e, no dev/HMR, colidem com
+  // espaço em branco e disparam "Hydration failed" + erro de removeChild.
+  //
+  // O workaround é de desenvolvimento, então fica restrito a ele — antes valia
+  // para todo user-agent (`/.*/`) e penalizava o carregamento em produção.
+  // Se o erro voltar em produção, o culpado é isto.
+  ...(process.env.NODE_ENV === 'development' ? { htmlLimitedBots: /.*/ } : {}),
 };
 
 export default nextConfig;

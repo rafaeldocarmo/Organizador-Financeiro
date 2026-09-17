@@ -1,8 +1,23 @@
 import type { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getUserId, parseMonthParams, getOrCreateMonth, ok, err } from "@/lib/api";
+import {
+  ApiError,
+  assertCategory,
+  clampInt,
+  getUserId,
+  getOrCreateMonth,
+  ok,
+  fail,
+  parseISODate,
+  parseLimit,
+  parseMonthParams,
+  positiveAmount,
+  requiredString,
+} from "@/lib/api";
 import { TransactionType } from "@/lib/generated/prisma";
 import { ensureClonesThrough, horizonMonth } from "@/lib/recurring";
+
+const TYPES: readonly string[] = ["INCOME", "EXPENSE"];
 
 export async function GET(req: NextRequest) {
   try {
@@ -10,9 +25,10 @@ export async function GET(req: NextRequest) {
     const sp = req.nextUrl.searchParams;
     const { year, month } = parseMonthParams(req);
 
-    const type = sp.get("type") as TransactionType | null;
+    const rawType = sp.get("type");
+    const type = rawType && TYPES.includes(rawType) ? (rawType as TransactionType) : null;
     const categoryId = sp.get("categoryId");
-    const limit = Number(sp.get("limit") ?? 50);
+    const limit = parseLimit(req);
 
     const monthStart = new Date(year, month - 1, 1);
     const monthEnd = new Date(year, month, 1);
@@ -27,14 +43,15 @@ export async function GET(req: NextRequest) {
         ...(type ? { type } : {}),
         ...(categoryId ? { categoryId } : {}),
       },
-      include: { category: true },
+      // `month` é a fatura escolhida no crédito; o modal de edição precisa dela.
+      include: { category: true, month: { select: { year: true, month: true } } },
       orderBy: { date: "desc" },
       take: limit,
     });
 
     return ok(transactions);
   } catch (e) {
-    return err(e instanceof Error ? e.message : "Internal error", 500);
+    return fail(e, "GET /api/transactions");
   }
 }
 
@@ -42,35 +59,38 @@ export async function POST(req: NextRequest) {
   try {
     const userId = await getUserId(req);
     const body = await req.json();
-    const { type, title, description, amount, date, categoryId, hasAttachment, isCredit, received, isRecurring, billingYear, billingMonth } = body;
+    const { type, description, hasAttachment, isCredit, received, isRecurring, billingYear, billingMonth } = body;
 
-    if (!type || !title || !amount || !date || !categoryId) {
-      return err("type, title, amount, date, categoryId are required");
-    }
+    if (!TYPES.includes(type)) throw new ApiError("type deve ser INCOME ou EXPENSE");
+    const title = requiredString(body.title, "title", 200);
+    const amount = positiveAmount(body.amount);
+    const categoryId = requiredString(body.categoryId, "categoryId", 60);
+    const { year: dy, month: dm, day: dd } = parseISODate(body.date);
+
+    await assertCategory(categoryId, userId);
 
     // Parse date as local midnight to avoid UTC offset shifting the month/day
-    const [dy, dm, dd] = (date as string).split('-').map(Number);
     const txDate = new Date(dy, dm - 1, dd);
-    const billY = billingYear  ? Number(billingYear)  : dy;
-    const billM = billingMonth ? Number(billingMonth) : dm;
+    const billY = billingYear !== undefined ? clampInt(billingYear, 1970, 9999, dy) : dy;
+    const billM = billingMonth !== undefined ? clampInt(billingMonth, 1, 12, dm) : dm;
     const monthRec = await getOrCreateMonth(userId, billY, billM);
 
     const tx = await prisma.transaction.create({
       data: {
         userId,
-        type,
+        type: type as TransactionType,
         title,
-        description: description ?? null,
-        amount: Number(amount),
+        description: typeof description === "string" ? description.slice(0, 500) : null,
+        amount,
         date: txDate,
-        hasAttachment: hasAttachment ?? false,
-        isCredit: isCredit ?? false,
-        received: received ?? true,
-        isRecurring: isRecurring ?? false,
+        hasAttachment: Boolean(hasAttachment),
+        isCredit: Boolean(isCredit),
+        received: received === undefined ? true : Boolean(received),
+        isRecurring: Boolean(isRecurring),
         categoryId,
         monthId: monthRec.id,
       },
-      include: { category: true },
+      include: { category: true, month: { select: { year: true, month: true } } },
     });
 
     // Recurring template? Materialize the whole horizon right away so the user
@@ -82,6 +102,6 @@ export async function POST(req: NextRequest) {
 
     return ok(tx, 201);
   } catch (e) {
-    return err(e instanceof Error ? e.message : "Internal error", 500);
+    return fail(e, "POST /api/transactions");
   }
 }

@@ -1,6 +1,15 @@
 import type { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getUserId, ok, err } from "@/lib/api";
+import {
+  ApiError,
+  assertCategory,
+  getUserId,
+  ok,
+  fail,
+  positiveAmount,
+  positiveInt,
+  requiredString,
+} from "@/lib/api";
 import { withParcelInfo } from "@/lib/installments";
 
 export async function PATCH(
@@ -14,43 +23,40 @@ export async function PATCH(
     const { title, store, totalAmount, totalParcels, paidParcels, cardName, startDate, categoryId } = body;
 
     const installment = await prisma.installment.findUnique({ where: { id } });
-    if (!installment || installment.userId !== userId) return err("Not found", 404);
+    if (!installment || installment.userId !== userId) throw new ApiError("Not found", 404);
 
-    if (totalAmount !== undefined && !(Number(totalAmount) > 0)) {
-      return err("totalAmount must be greater than 0");
-    }
-    if (totalParcels !== undefined && !(Number.isInteger(Number(totalParcels)) && Number(totalParcels) > 0)) {
-      return err("totalParcels must be a positive integer");
-    }
+    if (categoryId !== undefined) await assertCategory(String(categoryId), userId);
     if (startDate !== undefined && isNaN(new Date(startDate).getTime())) {
-      return err("startDate is invalid");
+      throw new ApiError("startDate é inválido");
     }
 
     // Shrinking the purchase can leave paidParcels above the new total.
-    const nextTotal = totalParcels !== undefined ? Number(totalParcels) : installment.totalParcels;
+    const nextTotal = totalParcels !== undefined
+      ? positiveInt(totalParcels, "totalParcels")
+      : installment.totalParcels;
     const nextPaid = Math.min(
-      paidParcels !== undefined ? Number(paidParcels) : installment.paidParcels,
+      paidParcels !== undefined ? Math.max(0, Math.trunc(Number(paidParcels)) || 0) : installment.paidParcels,
       nextTotal,
     );
 
     const updated = await prisma.installment.update({
       where: { id },
       data: {
-        ...(title !== undefined ? { title } : {}),
-        ...(store !== undefined ? { store } : {}),
-        ...(totalAmount !== undefined ? { totalAmount: Number(totalAmount) } : {}),
+        ...(title !== undefined ? { title: requiredString(title, "title", 200) } : {}),
+        ...(store !== undefined ? { store: typeof store === "string" ? store.slice(0, 200) : null } : {}),
+        ...(totalAmount !== undefined ? { totalAmount: positiveAmount(totalAmount, "totalAmount") } : {}),
         ...(totalParcels !== undefined ? { totalParcels: nextTotal } : {}),
         ...(nextPaid !== installment.paidParcels ? { paidParcels: nextPaid } : {}),
-        ...(cardName !== undefined ? { cardName } : {}),
+        ...(cardName !== undefined ? { cardName: typeof cardName === "string" ? cardName.slice(0, 100) : null } : {}),
         ...(startDate !== undefined ? { startDate: new Date(startDate) } : {}),
-        ...(categoryId !== undefined ? { categoryId } : {}),
+        ...(categoryId !== undefined ? { categoryId: String(categoryId) } : {}),
       },
       include: { category: true },
     });
 
     return ok(withParcelInfo(updated));
   } catch (e) {
-    return err(e instanceof Error ? e.message : "Internal error", 500);
+    return fail(e, "PATCH /api/installments/[id]");
   }
 }
 
@@ -63,11 +69,11 @@ export async function DELETE(
     const { id } = await params;
 
     const installment = await prisma.installment.findUnique({ where: { id } });
-    if (!installment || installment.userId !== userId) return err("Not found", 404);
+    if (!installment || installment.userId !== userId) throw new ApiError("Not found", 404);
 
     await prisma.installment.delete({ where: { id } });
     return ok({ deleted: true });
   } catch (e) {
-    return err(e instanceof Error ? e.message : "Internal error", 500);
+    return fail(e, "DELETE /api/installments/[id]");
   }
 }

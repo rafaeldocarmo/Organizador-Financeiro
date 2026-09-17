@@ -20,6 +20,9 @@ export interface TransactionForEdit {
   received: boolean;
   isRecurring: boolean;
   isCredit: boolean;
+  /** Fatura gravada (Transaction.month). Ausente em telas que não a conhecem. */
+  billingYear?: number | null;
+  billingMonth?: number | null;
 }
 
 interface Props {
@@ -95,6 +98,7 @@ export default function TransactionModal({
     const n = new Date();
     return n.getMonth() === 11 ? 1 : n.getMonth() + 2;
   });
+  const [faturaTouched, setFaturaTouched] = useState(false);
 
   // categories
   const [cats, setCats]             = useState<Category[]>([]);
@@ -118,7 +122,10 @@ export default function TransactionModal({
       .then(data => { if (Array.isArray(data)) setCats(data); });
   }, []);
 
-  // reset / pre-fill on open
+  // Reset / pré-preenchimento. Depende do ID, não do objeto `initialData`: o
+  // pai o remonta a cada render, então usá-lo inteiro dispararia o efeito sem
+  // parar. Sem o ID aqui, trocar de lançamento com o modal aberto deixava o
+  // formulário com os dados do anterior — e salvar gravava no registro errado.
   useEffect(() => {
     if (!open) { setConfirmDel(false); return; }
     if (initialData) {
@@ -131,6 +138,15 @@ export default function TransactionModal({
       setReceived(initialData.received);
       setRecurring(initialData.isRecurring);
       setPayMethod(initialData.isCredit ? 'credit' : 'debit');
+      if (initialData.billingYear && initialData.billingMonth) {
+        setFaturaYear(initialData.billingYear); setFaturaMonth(initialData.billingMonth);
+      } else {
+        // Sem fatura conhecida: mês seguinte ao da compra, a mesma regra do
+        // lançamento novo. Só é enviada se a pessoa mexer (ver submit).
+        const [y, m] = initialData.date.slice(0, 7).split('-').map(Number);
+        setFaturaYear(m === 12 ? y + 1 : y); setFaturaMonth(m === 12 ? 1 : m + 1);
+      }
+      setFaturaTouched(false);
     } else {
       setTxType(typeProp ?? 'EXPENSE');
       setAmount(''); setTitle(''); setDate(today()); setCatId('');
@@ -144,7 +160,7 @@ export default function TransactionModal({
     }
     setConfirmDel(false); setSaving(false); setDeleting(false);
     setTimeout(() => titleRef.current?.focus(), 80);
-  }, [open]);
+  }, [open, initialData?.id, typeProp, defaultRecurring]);
 
   // derived
   const parsedAmt = parseAmount(amount);
@@ -188,6 +204,13 @@ export default function TransactionModal({
             received: txType === 'INCOME' ? received : undefined,
             isRecurring,
             ...(txType === 'EXPENSE' ? { isCredit: payMethod === 'credit' } : {}),
+            // A fatura só vai quando é informação real: já existia, a pessoa
+            // mexeu no seletor, ou o gasto acabou de virar crédito. Mandar o
+            // chute do mês seguinte sobrescreveria a fatura de verdade.
+            ...(txType === 'EXPENSE' && payMethod === 'credit'
+              && (initialData!.billingYear != null || faturaTouched || !initialData!.isCredit)
+              ? { billingYear: faturaYear, billingMonth: faturaMonth }
+              : {}),
           }),
         });
         const data = await r.json();
@@ -309,10 +332,10 @@ export default function TransactionModal({
           )}
 
           {/* fatura — create, credit only */}
-          {!isEdit && txType === 'EXPENSE' && payMethod === 'credit' && (
+          {txType === 'EXPENSE' && payMethod === 'credit' && (
             <Field label="Fatura">
               <FaturaPicker year={faturaYear} month={faturaMonth}
-                onChange={(y, m) => { setFaturaYear(y); setFaturaMonth(m); }} />
+                onChange={(y, m) => { setFaturaYear(y); setFaturaMonth(m); setFaturaTouched(true); }} />
             </Field>
           )}
 

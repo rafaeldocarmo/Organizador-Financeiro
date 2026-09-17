@@ -26,11 +26,19 @@ export default auth((req) => {
     return Response.redirect(url);
   }
 
-  // Forward userId to API routes so they don't re-decode the JWT via auth()
-  const userId = req.auth.user?.id;
-  if (userId && path.startsWith("/api/")) {
+  // Repassa o userId para as rotas de API, que assim não precisam decodificar
+  // o JWT de novo com auth().
+  //
+  // O header é REESCRITO em toda requisição para /api — inclusive apagado
+  // quando não há id na sessão. Antes, uma sessão sem `user.id` (as emitidas
+  // antes do callback jwt atual, por exemplo) caía direto no `return` de baixo
+  // e o `x-user-id` mandado pelo cliente chegava intacto ao handler, que confia
+  // nele: um header e você era outro usuário.
+  if (path.startsWith("/api/")) {
     const headers = new Headers(req.headers);
-    headers.set("x-user-id", userId);
+    const userId = req.auth.user?.id;
+    if (userId) headers.set("x-user-id", userId);
+    else headers.delete("x-user-id");
     return NextResponse.next({ request: { headers } });
   }
 });

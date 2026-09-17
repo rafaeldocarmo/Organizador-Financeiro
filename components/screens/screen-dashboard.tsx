@@ -7,6 +7,7 @@ import Card from '@/components/ui/card';
 import Chip from '@/components/ui/chip';
 import Segments from '@/components/ui/segments';
 import TabBar from '@/components/ui/tab-bar';
+import MonthNav from '@/components/ui/month-nav';
 import TransactionModal from '@/components/ui/transaction-modal';
 import PaymentMethodSheet from '@/components/ui/payment-method-sheet';
 import CategorySheet, { CategoryForSheet } from '@/components/ui/category-sheet';
@@ -51,13 +52,6 @@ export default function ScreenDashboard() {
     tick,
   );
 
-  function shiftMonth(delta: number) {
-    let m = month + delta;
-    let y = year;
-    if (m < 1) { m = 12; y -= 1; }
-    if (m > 12) { m = 1; y += 1; }
-    setYear(y); setMonth(m);
-  }
 
   const income = data?.income ?? 0;
   const expense = data?.expense ?? 0;
@@ -89,35 +83,12 @@ export default function ScreenDashboard() {
         <Logo size={28} />
       </div>
 
-      <div style={{ padding: '0 20px 12px', display: 'flex', alignItems: 'center', gap: 6 }}>
-        <button
-          onClick={() => shiftMonth(-1)}
-          aria-label="Mês anterior"
-          style={{
-            width: 32, height: 32, borderRadius: 10, display: 'flex',
-            alignItems: 'center', justifyContent: 'center',
-            background: 'var(--surface)', border: '1px solid var(--hairline)',
-            color: 'var(--muted)',
-          }}
-        >
-          <I.chev s={14} sw={2} style={{ transform: 'rotate(180deg)' }} />
-        </button>
-        <div style={{ flex: 1, textAlign: 'center', fontSize: 13.5, fontWeight: 500, letterSpacing: '0.01em' }}>
-          {monthLabelCap}
-        </div>
-        <button
-          onClick={() => shiftMonth(1)}
-          aria-label="Próximo mês"
-          style={{
-            width: 32, height: 32, borderRadius: 10, display: 'flex',
-            alignItems: 'center', justifyContent: 'center',
-            background: 'var(--surface)', border: '1px solid var(--hairline)',
-            color: 'var(--muted)',
-          }}
-        >
-          <I.chev s={14} sw={2} />
-        </button>
-      </div>
+      <MonthNav
+        year={year}
+        month={month}
+        label={monthLabelCap}
+        onChange={(y, m) => { setYear(y); setMonth(m); }}
+      />
 
       <div style={{ padding: '4px 20px 8px', display: 'flex', justifyContent: 'center' }}>
         <Segments

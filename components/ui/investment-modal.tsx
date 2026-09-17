@@ -50,6 +50,7 @@ export default function InvestmentModal({
   const [confirmDel, setConfirmDel] = useState(false);
   const titleRef = useRef<HTMLInputElement>(null);
 
+  // Depende do ID, não do objeto: ver a nota em transaction-modal.tsx.
   useEffect(() => {
     if (!open) { setConfirmDel(false); return; }
     if (initialData) {
@@ -62,7 +63,7 @@ export default function InvestmentModal({
     }
     setSaving(false); setDeleting(false); setConfirmDel(false);
     setTimeout(() => titleRef.current?.focus(), 80);
-  }, [open]);
+  }, [open, initialData?.id]);
 
   const parsedAmt = parseAmount(amount);
   const valid = title.trim() !== '' && parsedAmt > 0;
