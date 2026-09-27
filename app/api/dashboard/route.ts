@@ -3,6 +3,7 @@ import { Prisma } from "@/lib/generated/prisma";
 import { prisma } from "@/lib/prisma";
 import { getUserId, parseMonthParams, ok, fail } from "@/lib/api";
 import { entriesForMonth } from "@/lib/installments";
+import { calendarMonthWindow, faturaClauses } from "@/lib/fatura";
 
 export async function GET(req: NextRequest) {
   try {
@@ -30,12 +31,17 @@ export async function GET(req: NextRequest) {
         label: d.toLocaleString("pt-BR", { month: "short" }).toUpperCase(),
       };
     });
-    const trendStart = monthSlots[0].start;
-    const trendEnd = monthSlots[6].end;
 
-    // Everything is filtered by transaction date (when the purchase happened),
-    // matching /fluxo. Installments are counted in their active month based on
-    // startDate. Credit-card billing month is ignored for these aggregates.
+    // Débito e receita contam pela data. Crédito conta pela fatura escolhida:
+    // uma compra de setembro na fatura de outubro é gasto de outubro aqui
+    // (lib/fatura.ts). Parcelas seguem a regra própria de lib/installments.ts.
+    const window = calendarMonthWindow(year, month);
+    const [trendStartY, trendStartM] = [monthSlots[0].y, monthSlots[0].m];
+    const [trendEndY, trendEndM] = [monthSlots[6].y, monthSlots[6].m];
+    const variableSql = variable
+      ? Prisma.sql`AND t."isRecurring" = false AND t."recurringTemplateId" IS NULL`
+      : Prisma.empty;
+
     const [
       incomeAgg,
       debitAgg,
@@ -53,7 +59,10 @@ export async function GET(req: NextRequest) {
         _sum: { amount: true },
       }),
       prisma.transaction.aggregate({
-        where: { userId, type: "EXPENSE", isCredit: true, date: { gte: monthStart, lt: monthEnd }, ...variableFilter },
+        where: {
+          userId, type: "EXPENSE", isCredit: true, ...variableFilter,
+          OR: faturaClauses(window).filter(c => c.isCredit),
+        },
         _sum: { amount: true },
       }),
       prisma.installment.findMany({
@@ -61,38 +70,27 @@ export async function GET(req: NextRequest) {
         include: { category: true },
       }),
       prisma.transaction.findMany({
-        where: { userId, type: "EXPENSE", date: { gte: monthStart, lt: monthEnd }, ...variableFilter },
+        where: { userId, type: "EXPENSE", ...variableFilter, OR: faturaClauses(window) },
         include: { category: true },
       }),
-      prisma.$queryRaw<Array<{ y: number; m: number; total: number }>>(
-        variable
-          ? Prisma.sql`
-              SELECT
-                EXTRACT(YEAR FROM date)::int  AS y,
-                EXTRACT(MONTH FROM date)::int AS m,
-                COALESCE(SUM(amount), 0)::float AS total
-              FROM "Transaction"
-              WHERE "userId" = ${userId}
-                AND "type"::text = 'EXPENSE'
-                AND date >= ${trendStart}
-                AND date <  ${trendEnd}
-                AND "isRecurring" = false
-                AND "recurringTemplateId" IS NULL
-              GROUP BY y, m
-            `
-          : Prisma.sql`
-              SELECT
-                EXTRACT(YEAR FROM date)::int  AS y,
-                EXTRACT(MONTH FROM date)::int AS m,
-                COALESCE(SUM(amount), 0)::float AS total
-              FROM "Transaction"
-              WHERE "userId" = ${userId}
-                AND "type"::text = 'EXPENSE'
-                AND date >= ${trendStart}
-                AND date <  ${trendEnd}
-              GROUP BY y, m
-            `,
-      ),
+      // Mesma regra de lib/fatura.ts em SQL: crédito com fatura usa o mês da
+      // fatura; o resto usa o mês da data.
+      prisma.$queryRaw<Array<{ y: number; m: number; total: number }>>(Prisma.sql`
+        SELECT y, m, COALESCE(SUM(amount), 0)::float AS total
+        FROM (
+          SELECT
+            CASE WHEN t."isCredit" AND mo.id IS NOT NULL THEN mo.year  ELSE EXTRACT(YEAR  FROM t.date)::int END AS y,
+            CASE WHEN t."isCredit" AND mo.id IS NOT NULL THEN mo.month ELSE EXTRACT(MONTH FROM t.date)::int END AS m,
+            t.amount
+          FROM "Transaction" t
+          LEFT JOIN "Month" mo ON mo.id = t."monthId"
+          WHERE t."userId" = ${userId}
+            AND t."type"::text = 'EXPENSE'
+            ${variableSql}
+        ) x
+        WHERE y * 12 + m BETWEEN ${trendStartY * 12 + trendStartM} AND ${trendEndY * 12 + trendEndM}
+        GROUP BY y, m
+      `),
     ]);
 
     // Variable mode excludes installments entirely from the totals/breakdown/trend.

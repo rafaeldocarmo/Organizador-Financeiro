@@ -16,6 +16,7 @@ import {
 } from "@/lib/api";
 import { TransactionType } from "@/lib/generated/prisma";
 import { ensureClonesThrough, horizonMonth } from "@/lib/recurring";
+import { calendarMonthWindow, faturaClauses } from "@/lib/fatura";
 
 const TYPES: readonly string[] = ["INCOME", "EXPENSE"];
 
@@ -33,13 +34,17 @@ export async function GET(req: NextRequest) {
     const monthStart = new Date(year, month - 1, 1);
     const monthEnd = new Date(year, month, 1);
 
-    // Always filter by the actual transaction date — /fluxo shows purchases
-    // by when they happened, regardless of which fatura they'll land in.
-    // The dashboard separately aggregates by billing month for credit cards.
+    // Padrão: pela data da compra — é o que /spend mostra. Com `view=fatura`,
+    // crédito entra pela fatura escolhida (lib/fatura.ts), igual aos totais da
+    // página inicial; as gavetas de lá usam essa visão para bater com eles.
+    const byFatura = sp.get("view") === "fatura";
+
     const transactions = await prisma.transaction.findMany({
       where: {
         userId,
-        date: { gte: monthStart, lt: monthEnd },
+        ...(byFatura
+          ? { OR: faturaClauses(calendarMonthWindow(year, month)) }
+          : { date: { gte: monthStart, lt: monthEnd } }),
         ...(type ? { type } : {}),
         ...(categoryId ? { categoryId } : {}),
       },

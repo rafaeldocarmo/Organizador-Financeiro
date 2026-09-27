@@ -51,6 +51,11 @@ interface Props {
   mode?: 'all' | 'variable';
   /** Screens whose totals ignore parcelas (e.g. /categories) pass false. */
   withInstallments?: boolean;
+  /**
+   * Crédito pela fatura escolhida em vez da data — a regra dos totais da
+   * página inicial. /categories soma pela data e deixa false.
+   */
+  byFatura?: boolean;
   onClose: () => void;
   /** Called after the category itself is renamed, restyled or deleted. */
   onChanged?: () => void;
@@ -70,7 +75,7 @@ interface Row {
 }
 
 export default function CategorySheet({
-  open, category, year, month, mode = 'all', withInstallments = true, onClose, onChanged,
+  open, category, year, month, mode = 'all', withInstallments = true, byFatura = false, onClose, onChanged,
 }: Props) {
   const [editOpen, setEditOpen] = useState(false);
   // Keeps the header in sync right after a rename, before the parent refetches.
@@ -78,7 +83,9 @@ export default function CategorySheet({
   const active = open && category !== null;
   // Same URL the other sheets use, so the fetch is served from cache.
   const { data: txs } = useFetch<Transaction[]>(
-    active ? `/api/transactions?type=EXPENSE&year=${year}&month=${month}&limit=500` : null,
+    active
+      ? `/api/transactions?type=EXPENSE&year=${year}&month=${month}&limit=500${byFatura ? '&view=fatura' : ''}`
+      : null,
   );
   const { data: insts } = useFetch<Installment[]>(
     active && withInstallments && mode !== 'variable' ? '/api/installments' : null,

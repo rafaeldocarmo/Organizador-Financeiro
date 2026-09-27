@@ -1,42 +1,32 @@
 import type { Cycle } from "./cycle";
+import { belongsToFatura, faturaClauses } from "./fatura";
+
+type CycleWindow = Pick<Cycle, "year" | "month" | "start" | "endExclusive">;
 
 /**
- * A qual fatura um gasto variável pertence.
+ * Gastos variáveis de um ciclo de fatura.
  *
- * - Débito: pela data. Não existe fatura; o ciclo é só a janela de tempo.
- * - Crédito: pela fatura escolhida no lançamento (Transaction.month, gravada a
- *   partir do seletor "Fatura" do modal). Uma fatura (ano, mês) é o ciclo que
- *   FECHA naquele mês — a mesma chave de SpendingCap e de `cycleByKey`.
- *   Crédito sem fatura gravada (dados antigos) cai no ciclo pela data.
+ * A fatura (ano, mês) é o ciclo que FECHA naquele mês — a mesma chave de
+ * SpendingCap e de `cycleByKey`. A regra débito/crédito está em lib/fatura.ts.
  *
  * Antes a projeção olhava só a data, então uma compra de 2/set marcada para a
- * fatura de outubro aparecia no ciclo que fechou em setembro — o do mês do
- * gasto — e sumia do ciclo de outubro.
+ * fatura de outubro aparecia no ciclo que fechou em setembro.
  */
-export function variableExpensesInCycleWhere(userId: string, cycle: Pick<Cycle, "year" | "month" | "start" | "endExclusive">) {
-  const byDate = { gte: cycle.start, lt: cycle.endExclusive };
+export function variableExpensesInCycleWhere(userId: string, cycle: CycleWindow) {
   return {
     userId,
     type: "EXPENSE" as const,
     isRecurring: false,
     recurringTemplateId: null,
-    OR: [
-      { isCredit: false, date: byDate },
-      { isCredit: true, monthId: null, date: byDate },
-      { isCredit: true, month: { is: { year: cycle.year, month: cycle.month } } },
-    ],
+    OR: faturaClauses(cycle),
   };
 }
 
-/** Espelho em memória da mesma regra, para testes e para quem já tem os dados. */
 export function belongsToCycle(
   tx: { isCredit: boolean; date: Date; billing: { year: number; month: number } | null },
-  cycle: Pick<Cycle, "year" | "month" | "start" | "endExclusive">,
+  cycle: CycleWindow,
 ): boolean {
-  if (tx.isCredit && tx.billing) {
-    return tx.billing.year === cycle.year && tx.billing.month === cycle.month;
-  }
-  return tx.date >= cycle.start && tx.date < cycle.endExclusive;
+  return belongsToFatura(tx, cycle);
 }
 
 /**

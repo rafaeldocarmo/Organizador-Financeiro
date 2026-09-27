@@ -55,7 +55,8 @@ interface Row {
 }
 
 export default function PaymentMethodSheet({ open, payment, year, month, mode = 'all', onClose }: Props) {
-  const { data: txs }      = useFetch<Transaction[]>(open ? `/api/transactions?type=EXPENSE&year=${year}&month=${month}&limit=500` : null);
+  // view=fatura: crédito pela fatura escolhida, igual ao total do dashboard.
+  const { data: txs }      = useFetch<Transaction[]>(open ? `/api/transactions?type=EXPENSE&year=${year}&month=${month}&limit=500&view=fatura` : null);
   // Variable mode excludes installments entirely.
   const { data: insts }    = useFetch<Installment[]>(open && payment === 'credit' && mode !== 'variable' ? '/api/installments' : null);
 

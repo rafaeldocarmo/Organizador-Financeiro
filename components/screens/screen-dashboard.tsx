@@ -314,6 +314,7 @@ export default function ScreenDashboard() {
         year={year}
         month={month}
         mode={mode}
+        byFatura
         onClose={() => setCatSheet(null)}
         onChanged={() => { bustCache('/api/'); setTick(t => t + 1); }}
       />
