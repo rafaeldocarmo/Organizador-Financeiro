@@ -12,7 +12,8 @@ import {
   positiveAmount,
   requiredString,
 } from "@/lib/api";
-import { ensureClonesThrough, horizonMonth } from "@/lib/recurring";
+import { ensureClonesThrough, horizonMonth, seriesRowsFrom } from "@/lib/recurring";
+import { sameDayInMonth } from "@/lib/dates";
 
 export async function PATCH(
   req: NextRequest,
@@ -65,6 +66,43 @@ export async function PATCH(
       include: { category: true, month: { select: { year: true, month: true } } },
     });
 
+    // scope=forward: repete a edição neste mês e nos seguintes da mesma série.
+    // Os meses anteriores ficam intactos — um gasto que de fato foi diferente
+    // em agosto continua como estava.
+    let propagated = 0;
+    if (body.scope === "forward") {
+      const templateId = tx.recurringTemplateId ?? (tx.isRecurring ? tx.id : null);
+      if (templateId) {
+        const serie = await prisma.transaction.findMany({
+          where: { userId, OR: [{ id: templateId }, { recurringTemplateId: templateId }] },
+        });
+        const alvos = seriesRowsFrom(serie, updated.date, updated.id);
+
+        // Só o que descreve o lançamento. `monthId` fica de fora: a fatura é
+        // escolhida mês a mês. O dia do mês acompanha, encurtado em mês curto.
+        const comum = {
+          ...(title !== undefined ? { title: updated.title } : {}),
+          ...(description !== undefined ? { description: updated.description } : {}),
+          ...(amount !== undefined ? { amount: updated.amount } : {}),
+          ...(categoryId !== undefined ? { categoryId: updated.categoryId } : {}),
+          ...(isCredit !== undefined ? { isCredit: updated.isCredit } : {}),
+          ...(received !== undefined ? { received: updated.received } : {}),
+        };
+        if (Object.keys(comum).length > 0 || date !== undefined) {
+          await prisma.$transaction(alvos.map(alvo => prisma.transaction.update({
+            where: { id: alvo.id },
+            data: {
+              ...comum,
+              ...(date !== undefined
+                ? { date: sameDayInMonth(updated.date, alvo.date.getFullYear(), alvo.date.getMonth() + 1) }
+                : {}),
+            },
+          })));
+          propagated = alvos.length;
+        }
+      }
+    }
+
     // If the toggle just flipped to recurring (or it's already recurring),
     // fill the horizon. Idempotent.
     if (updated.isRecurring && !updated.recurringTemplateId) {
@@ -72,7 +110,7 @@ export async function PATCH(
       try { await ensureClonesThrough(updated, hy, hm); } catch (e) { console.error("PATCH clone failed:", e); }
     }
 
-    return ok(updated);
+    return ok({ ...updated, propagated });
   } catch (e) {
     return fail(e, "PATCH /api/transactions/[id]");
   }

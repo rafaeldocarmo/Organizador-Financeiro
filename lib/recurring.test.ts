@@ -27,9 +27,7 @@ vi.mock('@/lib/prisma', () => ({
         ) ?? null,
       ),
       findMany: vi.fn(async ({ where }: { where: { recurringTemplateId: string } }) =>
-        db.transactions
-          .filter(t => t.recurringTemplateId === where.recurringTemplateId)
-          .map(t => ({ monthId: t.monthId })),
+        db.transactions.filter(t => t.recurringTemplateId === where.recurringTemplateId),
       ),
       create: vi.fn(async ({ data }: { data: Record<string, unknown> }) => {
         db.createCalls += 1;
@@ -56,8 +54,10 @@ vi.mock('@/lib/api', () => ({
   }),
 }));
 
-const { addMonths, ensureCloneForMonth, ensureClonesThrough, horizonMonth, nextMonth } =
-  await import('./recurring');
+const {
+  addMonths, cloneSource, ensureCloneForMonth, ensureClonesThrough,
+  horizonMonth, nextMonth, seriesRowsFrom,
+} = await import('./recurring');
 
 type Tx = Parameters<typeof ensureCloneForMonth>[0];
 
@@ -256,5 +256,79 @@ describe('ensureClonesThrough', () => {
 
   it('recusa transação não recorrente', async () => {
     expect(await ensureClonesThrough(template({ isRecurring: false }), 2026, 6)).toBe(0);
+  });
+
+  it('o mês novo copia o mês mais recente, não o molde', async () => {
+    // Regressão: mudar a assinatura de fev em diante e deixar o molde de jan
+    // com o valor antigo fazia março nascer com 2500 de novo.
+    const tpl = template();
+    await ensureClonesThrough(tpl, 2026, 2); // cria fevereiro com 2500
+    const fev = db.transactions[0];
+    fev.amount = 3000; // como ficaria depois de um "este e os próximos"
+    fev.title = 'Aluguel reajustado';
+
+    await ensureClonesThrough(tpl, 2026, 3); // cria março
+    const mar = db.transactions[1];
+    expect(mar.amount).toBe(3000);
+    expect(mar.title).toBe('Aluguel reajustado');
+  });
+
+  it('o mês novo continua apontando para o molde, não para o mês copiado', async () => {
+    const tpl = template();
+    await ensureClonesThrough(tpl, 2026, 2);
+    await ensureClonesThrough(tpl, 2026, 3);
+    expect(db.transactions.map(t => t.recurringTemplateId)).toEqual(['tpl-1', 'tpl-1']);
+  });
+});
+
+describe('cloneSource', () => {
+  const tpl = { id: 'tpl', date: new Date(2026, 0, 15) };
+
+  it('sem meses gerados, copia o molde', () => {
+    expect(cloneSource(tpl, [])).toBe(tpl);
+  });
+
+  it('copia o mês de data mais alta, independente da ordem da lista', () => {
+    const fev = { id: 'fev', date: new Date(2026, 1, 15) };
+    const abr = { id: 'abr', date: new Date(2026, 3, 15) };
+    const mar = { id: 'mar', date: new Date(2026, 2, 15) };
+    expect(cloneSource(tpl, [fev, abr, mar]).id).toBe('abr');
+    expect(cloneSource(tpl, [abr, fev]).id).toBe('abr');
+  });
+});
+
+describe('seriesRowsFrom', () => {
+  const jan = { id: 'jan', date: new Date(2026, 0, 15) };
+  const fev = { id: 'fev', date: new Date(2026, 1, 15) };
+  const mar = { id: 'mar', date: new Date(2026, 2, 15) };
+  const abr = { id: 'abr', date: new Date(2026, 3, 15) };
+  const serie = [jan, fev, mar, abr];
+
+  it('pega do mês editado em diante e exclui a própria linha', () => {
+    expect(seriesRowsFrom(serie, fev.date, fev.id).map(r => r.id)).toEqual(['mar', 'abr']);
+  });
+
+  it('não alcança meses anteriores', () => {
+    expect(seriesRowsFrom(serie, mar.date, mar.id).map(r => r.id)).toEqual(['abr']);
+  });
+
+  it('editar o molde alcança a série toda', () => {
+    expect(seriesRowsFrom(serie, jan.date, jan.id).map(r => r.id)).toEqual(['fev', 'mar', 'abr']);
+  });
+
+  it('o último mês não alcança ninguém', () => {
+    expect(seriesRowsFrom(serie, abr.date, abr.id)).toEqual([]);
+  });
+
+  it('compara por mês, não por dia', () => {
+    const outroDia = { id: 'fev-dia-1', date: new Date(2026, 1, 1) };
+    expect(seriesRowsFrom([...serie, outroDia], fev.date, fev.id).map(r => r.id))
+      .toEqual(['mar', 'abr', 'fev-dia-1']);
+  });
+
+  it('atravessa a virada de ano', () => {
+    const dez = { id: 'dez', date: new Date(2026, 11, 10) };
+    const janSeguinte = { id: 'jan27', date: new Date(2027, 0, 10) };
+    expect(seriesRowsFrom([dez, janSeguinte], dez.date, dez.id).map(r => r.id)).toEqual(['jan27']);
   });
 });

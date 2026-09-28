@@ -23,6 +23,8 @@ export interface TransactionForEdit {
   /** Fatura gravada (Transaction.month). Ausente em telas que não a conhecem. */
   billingYear?: number | null;
   billingMonth?: number | null;
+  /** Preenchido nos meses gerados a partir de um fixo. */
+  recurringTemplateId?: string | null;
 }
 
 interface Props {
@@ -99,6 +101,7 @@ export default function TransactionModal({
     return n.getMonth() === 11 ? 1 : n.getMonth() + 2;
   });
   const [faturaTouched, setFaturaTouched] = useState(false);
+  const [scope, setScope] = useState<'one' | 'forward'>('one');
 
   // categories
   const [cats, setCats]             = useState<Category[]>([]);
@@ -147,6 +150,7 @@ export default function TransactionModal({
         setFaturaYear(m === 12 ? y + 1 : y); setFaturaMonth(m === 12 ? 1 : m + 1);
       }
       setFaturaTouched(false);
+      setScope('one'); // nunca alcança vários meses sem escolha explícita
     } else {
       setTxType(typeProp ?? 'EXPENSE');
       setAmount(''); setTitle(''); setDate(today()); setCatId('');
@@ -166,6 +170,8 @@ export default function TransactionModal({
   const parsedAmt = parseAmount(amount);
   const parsedQty = parseInt(installQty) || 0;
   const isInstall = !isEdit && txType === 'EXPENSE' && payMethod === 'credit' && installment;
+  /** Este lançamento é um mês de um fixo — o molde ou um mês gerado a partir dele. */
+  const isSeries = isEdit && (initialData!.isRecurring || initialData!.recurringTemplateId != null);
   const valid     = title.trim() !== '' && parsedAmt > 0 && catId !== '' && (!isInstall || parsedQty > 0);
 
   // ── create category ──
@@ -203,6 +209,7 @@ export default function TransactionModal({
             description: desc.trim() || null,
             received: txType === 'INCOME' ? received : undefined,
             isRecurring,
+            ...(isSeries ? { scope } : {}),
             ...(txType === 'EXPENSE' ? { isCredit: payMethod === 'credit' } : {}),
             // A fatura só vai quando é informação real: já existia, a pessoa
             // mexeu no seletor, ou o gasto acabou de virar crédito. Mandar o
@@ -500,6 +507,28 @@ export default function TransactionModal({
 
         {/* actions */}
         <div style={{ padding: '12px 20px max(36px, calc(env(safe-area-inset-bottom) + 16px))', display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {isSeries && (
+            <div style={{ marginBottom: 4 }}>
+              <div style={{ fontSize: 11.5, color: 'var(--muted)', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 8 }}>
+                Aplicar em
+              </div>
+              <SegControl
+                options={[
+                  { value: 'one', label: 'Só este mês' },
+                  { value: 'forward', label: 'Este e os próximos' },
+                ]}
+                value={scope}
+                onChange={v => setScope(v as 'one' | 'forward')}
+                activeColor={accent} full
+              />
+              <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 8, lineHeight: 1.45 }}>
+                {scope === 'one'
+                  ? 'Os outros meses ficam como estão.'
+                  : 'Vale também para os meses que ainda serão criados. Meses anteriores não mudam.'}
+              </div>
+            </div>
+          )}
+
           <button onClick={submit} disabled={!valid || saving} style={{
             width: '100%', height: 52, borderRadius: 16,
             background: valid ? accent : 'var(--surface-2)',
@@ -510,6 +539,7 @@ export default function TransactionModal({
           }}>
             {saving ? 'Salvando…'
               : isInstall && parsedQty > 0 && parsedAmt > 0 ? `Salvar ${parsedQty}× de ${fmt(parsedAmt)}`
+              : isSeries && scope === 'forward' ? 'Salvar neste e nos próximos'
               : isEdit ? 'Salvar alterações'
               : 'Salvar'}
           </button>

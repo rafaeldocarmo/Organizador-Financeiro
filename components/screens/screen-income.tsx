@@ -21,6 +21,7 @@ interface IncomeItem {
   amount: number;
   received: boolean;
   isRecurring: boolean;
+  recurringTemplateId?: string | null;
   categoryId: string;
   date: string;
   category: { icon: string; color: string; name: string };
@@ -92,6 +93,7 @@ export default function ScreenIncome() {
       received: x.received,
       isRecurring: x.isRecurring,
       isCredit: false,
+      recurringTemplateId: x.recurringTemplateId ?? null,
     });
   }
 

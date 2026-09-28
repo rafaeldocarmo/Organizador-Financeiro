@@ -27,6 +27,7 @@ interface Transaction {
   hasAttachment: boolean;
   received: boolean;
   isRecurring: boolean;
+  recurringTemplateId?: string | null;
   isCredit: boolean;
   categoryId: string;
   category: { icon: string; color: string; name: string };
@@ -182,6 +183,7 @@ export default function ScreenSpend() {
       isCredit: x.isCredit,
       billingYear: x.month?.year ?? null,
       billingMonth: x.month?.month ?? null,
+      recurringTemplateId: x.recurringTemplateId ?? null,
     });
   }
 

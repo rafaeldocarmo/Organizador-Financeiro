@@ -61,6 +61,7 @@ export default function ScreenFixed() {
       isCredit: tx.isCredit,
       billingYear: tx.month?.year ?? null,
       billingMonth: tx.month?.month ?? null,
+      recurringTemplateId: tx.recurringTemplateId,
     });
   }
 
